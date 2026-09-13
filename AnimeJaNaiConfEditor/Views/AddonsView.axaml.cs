@@ -294,6 +294,7 @@ public partial class AddonsView : UserControl
                 "storage.read" => "Read this addon's saved data",
                 "storage.write" => "Save this addon's own data",
                 "sessions.manage" => "Process media files and profiles you separately approve",
+                "frames.read" => "Read small image samples from media you approve",
                 _ => permission,
             };
             var check = new CheckBox { Content = label, IsChecked = false };
