@@ -25,7 +25,7 @@ public partial class AddonsView
         Control<Button>("ApproveDestinationButton").IsVisible = available;
         Control<TextBlock>("NetworkNotice").Text = available
             ? "Only the destinations listed here are available to this addon version. Removing access or changing a credential stops the addon and its work."
-            : "This host does not include service and device access.";
+            : "This AJN build does not include addon service and device access.";
         if (!available) return;
         var list = (JsonObject)(await CallAsync("network.selections", new() { ["id"] = id }))!;
         foreach (var item in (JsonArray)list["destinations"]!)
@@ -44,7 +44,7 @@ public partial class AddonsView
             remove.Click += async (_, _) => await RunAsync(async () =>
             {
                 await CallAsync("network.revoke", new() { ["id"] = id, ["expectedHash"] = hash, ["destinationId"] = destinationId });
-                await RefreshListAsync();
+                await RefreshSelectedStatusAsync(); await RefreshNetworkAsync();
             });
             buttons.Children.Add(remove);
             if (credentialPermission && client?.ServerInfo["credentialsAvailable"]?.GetValue<bool>() == true && protocol is "http" or "https")
@@ -63,7 +63,7 @@ public partial class AddonsView
                 clear.Click += async (_, _) => await RunAsync(async () =>
                 {
                     await CallAsync("network.removeCredential", new() { ["id"] = id, ["expectedHash"] = hash, ["destinationId"] = destinationId });
-                    await RefreshListAsync();
+                    await RefreshSelectedStatusAsync(); await RefreshNetworkAsync();
                 });
                 buttons.Children.Add(clear);
             }
@@ -125,7 +125,7 @@ public partial class AddonsView
             if (!await ConsentAsync(owner, content, "Save credential")) return;
             await CallAsync("network.setCredential", new() { ["id"] = id, ["expectedHash"] = hash,
                 ["destinationId"] = selected["id"]!.DeepClone(), ["header"] = header.Text ?? "", ["value"] = value.Text ?? "" });
-            await RefreshListAsync();
+            await RefreshSelectedStatusAsync(); await RefreshNetworkAsync();
         }
         finally { value.Text = ""; }
     }

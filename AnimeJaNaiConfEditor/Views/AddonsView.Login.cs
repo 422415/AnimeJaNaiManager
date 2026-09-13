@@ -16,7 +16,7 @@ public partial class AddonsView
         var owner = TopLevel.GetTopLevel(this) as Window ?? throw new IOException("Could not open login settings.");
         var current = await CallAsync("host.login");
         var panel = new StackPanel { Margin = new Thickness(24), Spacing = 12 };
-        var dialog = new Window { Title = "Addon login startup", Width = 570, SizeToContent = SizeToContent.Height,
+        var dialog = new Window { Title = "Addon Windows startup", Width = 570, SizeToContent = SizeToContent.Height,
             CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = panel };
         panel.Children.Add(new TextBlock { Text = "Start background addons at sign-in", FontSize = 20, FontWeight = FontWeight.SemiBold });
         var enabled = new CheckBox { Name = "LoginEnabled", Content = "Start addons when I sign in to Windows", IsChecked = current!["enabled"]!.GetValue<bool>(),

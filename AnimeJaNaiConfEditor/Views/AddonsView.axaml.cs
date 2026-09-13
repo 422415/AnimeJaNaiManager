@@ -26,6 +26,9 @@ public partial class AddonsView : UserControl
     private readonly DispatcherTimer refreshTimer;
     private readonly Dictionary<string, Func<JsonNode?>> readSettings = new(StringComparer.Ordinal);
     private bool busy, loadingList, polling;
+    private bool selectedRunning, selectedFaulted;
+    private string? displayedId;
+    private JsonObject savedValues = new();
     private string DataDirectory => Path.Combine(MainWindowViewModel.DataDir, "addons");
     private string HostPath => Path.Combine(MainWindowViewModel.RootDir, "addon-host", "ajn-addon.exe");
     private string RuntimePath => Path.Combine(MainWindowViewModel.RootDir, "addon-host", "runtime", "wasmtime.exe");
@@ -35,14 +38,23 @@ public partial class AddonsView : UserControl
     public AddonsView()
     {
         AvaloniaXamlLoader.Load(this);
+        Loaded += async (_, _) =>
+        {
+            if (!Design.IsDesignMode && client?.IsConnected != true && !HasUnsavedSettings())
+                await RunAsync(ConnectAsync, announceSuccess: false);
+        };
         refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         refreshTimer.Tick += async (_, _) =>
         {
-            if (!busy && !polling && IsEffectivelyVisible && client?.IsConnected == true && SelectedId is not null)
+            if (!busy && !polling && IsEffectivelyVisible && client?.IsConnected == true)
             {
                 polling = true;
-                try { await RefreshSelectedStatusAsync(); }
-                catch (Exception error) { if (!lifetime.IsCancellationRequested) Control<TextBlock>("Status").Text = error.Message; }
+                try
+                {
+                    if (SelectedId is not null) await RefreshSelectedStatusAsync();
+                    else await client.ListAsync(lifetime.Token);
+                }
+                catch (Exception error) { if (!lifetime.IsCancellationRequested) ShowError(error); }
                 finally { polling = false; if (!busy) UpdateButtons(); }
             }
         };
@@ -69,22 +81,22 @@ public partial class AddonsView : UserControl
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("The addon preview currently supports Windows.");
         if (client?.IsConnected == true) { await RefreshListAsync(); return; }
-        if (client is not null) await client.DisposeAsync();
-        Control<TextBlock>("Status").Text = "Connecting addon host…";
+        if (client is not null) { await client.DisposeAsync(); client = null; }
+        Control<TextBlock>("Status").Text = "Opening addons…";
         client = await ManagementClient.ConnectOrStartAsync(DataDirectory, HostPath, RuntimePath,
             File.Exists(Path.Combine(MainWindowViewModel.RootDir, "addon-host", "native-media.json")) ? MainWindowViewModel.RootDir : null,
             cancellationToken: lifetime.Token);
         refreshTimer.Start();
         await RefreshListAsync();
-        Control<TextBlock>("Status").Text = "Connected. Addon storage and settings are kept separately from player profiles.";
+        Control<TextBlock>("Status").Text = "Addons are ready. Choose Install addon to add a package.";
     }
 
     private async Task<JsonNode?> CallAsync(string method, JsonObject? parameters = null) =>
-        await (client ?? throw new IOException("Connect the addon host first.")).CallAsync(method, parameters, lifetime.Token);
+        await (client ?? throw new IOException("Addon support is unavailable. Choose Try again.")).CallAsync(method, parameters, lifetime.Token);
 
-    private async Task RefreshListAsync()
+    private async Task RefreshListAsync(string? preferredId = null)
     {
-        string? selected = SelectedId;
+        string? selected = preferredId ?? SelectedId;
         var data = await client!.ListAsync(lifetime.Token);
         var list = Control<ListBox>("AddonList");
         var items = data.Select(node => new ListBoxItem
@@ -103,18 +115,22 @@ public partial class AddonsView : UserControl
 
     private async Task LoadSelectedAsync()
     {
+        displayedId = SelectedId; selectedRunning = false; selectedFaulted = false; savedValues = new();
         readSettings.Clear(); Control<StackPanel>("SettingFields").Children.Clear(); Control<StackPanel>("ActionFields").Children.Clear();
         Control<TextBlock>("ActionResult").Text = ""; Control<TextBox>("LogText").Text = "";
         Control<Button>("SaveButton").IsVisible = false;
         Control<TextBlock>("SettingsNotice").IsVisible = false;
         Control<StackPanel>("MediaSection").IsVisible = false;
         Control<StackPanel>("NetworkSection").IsVisible = false;
+        Control<TextBlock>("RuntimeNotice").IsVisible = false;
+        Control<TextBlock>("ActionsNotice").IsVisible = false;
         string? id = SelectedId;
-        if (id is null) { Control<TextBlock>("AddonTitle").Text = "No addons installed"; Control<TextBlock>("AddonState").Text = "Choose Install local addon to add a development package."; return; }
+        if (id is null) { Control<TextBlock>("AddonTitle").Text = "No addons installed"; Control<TextBlock>("AddonState").Text = "Choose Install addon and select an .ajnaddon file. You will review its permissions before anything is installed."; return; }
         Control<TextBlock>("AddonTitle").Text = id;
         await RefreshSelectedStatusAsync();
         var data = (JsonObject)(await CallAsync("addons.settings", new() { ["id"] = id }))!;
         var values = (JsonObject)data["values"]!;
+        savedValues = (JsonObject)values.DeepClone();
         if (data["invalidSettings"] is JsonArray { Count: > 0 } invalid)
         {
             Control<TextBlock>("SettingsNotice").Text = "This addon version cannot use some saved settings: " +
@@ -156,10 +172,12 @@ public partial class AddonsView : UserControl
             if (schema["description"] is JsonValue description) ToolTip.SetTip(action, description.GetValue<string>());
             action.Click += async (_, _) => await RunAsync(async () =>
             {
-                var result = await CallAsync("addons.action", new() { ["id"] = id, ["action"] = key });
-                Control<TextBlock>("ActionResult").Text = result?.ToJsonString() ?? "Action completed.";
                 await RefreshSelectedStatusAsync();
-            });
+                if (!selectedRunning) { Control<TextBlock>("Status").Text = "Start this addon before using its actions."; return; }
+                var result = await CallAsync("addons.action", new() { ["id"] = id, ["action"] = key });
+                Control<TextBlock>("ActionResult").Text = ActionText(result);
+                await RefreshSelectedStatusAsync();
+            }, announceSuccess: false);
             Control<StackPanel>("ActionFields").Children.Add(action);
         }
         await RefreshMediaAsync();
@@ -179,10 +197,16 @@ public partial class AddonsView : UserControl
         credentialPermission = row["credentialPermission"]?.GetValue<bool>() == true;
         outputPermission = row["outputPermission"]?.GetValue<bool>() == true;
         inputPermission = row["inputPermission"]?.GetValue<bool>() == true;
+        selectedRunning = row["running"]?.GetValue<bool>() == true;
+        selectedFaulted = row["error"] is JsonValue;
         Control<TextBlock>("AddonTitle").Text = row["name"]!.GetValue<string>();
         Control<TextBlock>("AddonState").Text = id + " · " + (row["version"]?.GetValue<string>() ?? "Unavailable") + "\n" +
             (row["running"]!.GetValue<bool>() ? "Running" : "Stopped") + (row["error"] is JsonValue error ? "\n" + error.GetValue<string>() : "");
         Control<Button>("StartButton").Tag = row["manual"]?.GetValue<bool>() == true;
+        Control<TextBlock>("RuntimeNotice").IsVisible = true;
+        Control<TextBlock>("RuntimeNotice").Text = selectedRunning
+            ? "Addons started with Start addon keep running after Manager closes. Stop addon ends their work."
+            : "Stopped. Some addons also start automatically when Manager, a player, or Windows starts, according to their setup.";
         if (Control<ListBox>("AddonList").SelectedItem is ListBoxItem item && item.Content is TextBlock label) label.Text = RowText(row);
         var logs = (JsonArray)(await CallAsync("addons.logs", new() { ["id"] = id }))!;
         if (SelectedId == id) Control<TextBox>("LogText").Text = string.Join(Environment.NewLine, logs.Select(l => l!.GetValue<string>()));
@@ -191,17 +215,19 @@ public partial class AddonsView : UserControl
     private async Task RunAsync(Func<Task> action, bool announceSuccess = true)
     {
         if (busy || lifetime.IsCancellationRequested) return;
+        Control<Expander>("ErrorDetails").IsVisible = false;
         busy = true; UpdateButtons();
         try { await action(); if (announceSuccess) Control<TextBlock>("Status").Text = "Done."; }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-        catch (Exception error) { Control<TextBlock>("Status").Text = error.Message; }
+        catch (Exception error) { ShowError(error); }
         finally { busy = false; UpdateButtons(); }
     }
 
     private void UpdateButtons()
     {
         bool connected = client?.IsConnected == true;
-        Control<Button>("ConnectButton").IsEnabled = !busy;
+        Control<Button>("RetryButton").IsVisible = !connected && !busy;
+        Control<Button>("RetryButton").IsEnabled = !busy;
         foreach (string name in new[] { "InstallButton", "RefreshButton" }) Control<Button>(name).IsEnabled = connected && !busy;
         Control<Button>("HostSettingsButton").IsVisible = connected && client?.ServerInfo["hostSettingsAvailable"]?.GetValue<bool>() == true;
         Control<Button>("HostSettingsButton").IsEnabled = connected && !busy;
@@ -209,35 +235,68 @@ public partial class AddonsView : UserControl
         Control<Button>("LoginSettingsButton").IsEnabled = connected && !busy;
         foreach (string name in new[] { "StartButton", "StopButton", "RollbackButton", "RemoveButton", "SaveButton" })
             Control<Button>(name).IsEnabled = connected && !busy && SelectedId is not null && (name != "StartButton" || Control<Button>(name).Tag is true);
+        Control<Button>("StopButton").IsEnabled = connected && !busy && SelectedId is not null && (selectedRunning || selectedFaulted);
         Control<ListBox>("AddonList").IsEnabled = !busy;
         Control<StackPanel>("SettingFields").IsEnabled = !busy;
-        Control<StackPanel>("ActionFields").IsEnabled = !busy;
+        Control<StackPanel>("ActionFields").IsEnabled = connected && !busy && selectedRunning;
+        Control<TextBlock>("ActionsNotice").IsVisible = SelectedId is not null && Control<StackPanel>("ActionFields").Children.Count > 0 && !selectedRunning;
+        Control<TextBlock>("ActionsNotice").Text = Control<Button>("StartButton").Tag is true
+            ? "Start this addon to use its actions. It will keep running until you stop it."
+            : "This addon must be running to use its actions. It starts from its declared player, Manager or Windows startup event.";
         Control<StackPanel>("MediaSection").IsEnabled = connected && !busy;
         Control<StackPanel>("NetworkSection").IsEnabled = connected && !busy;
     }
 
-    private async void ConnectClick(object? sender, RoutedEventArgs e) => await RunAsync(ConnectAsync, announceSuccess: false);
-    private async void RefreshClick(object? sender, RoutedEventArgs e) => await RunAsync(RefreshListAsync);
-    private async void SelectionChanged(object? sender, SelectionChangedEventArgs e) { if (!loadingList) await RunAsync(LoadSelectedAsync, announceSuccess: false); }
+    private async void RetryClick(object? sender, RoutedEventArgs e) => await RunAsync(async () =>
+    {
+        if (HasUnsavedSettings() && !await ConfirmAsync("Discard unsaved settings?", "Reopening addons restores their last saved settings.", "Discard changes")) return;
+        await ConnectAsync();
+    }, announceSuccess: false);
+    private async void RefreshClick(object? sender, RoutedEventArgs e) => await RunAsync(async () =>
+    {
+        if (HasUnsavedSettings() && !await ConfirmAsync("Discard unsaved settings?", "Reloading restores the last saved values for this addon.", "Discard changes")) return;
+        await ConnectAsync();
+    }, announceSuccess: false);
+    private async void SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (loadingList) return;
+        if (HasUnsavedSettings())
+        {
+            var list = Control<ListBox>("AddonList"); loadingList = true;
+            try { list.SelectedItem = list.Items.OfType<ListBoxItem>().FirstOrDefault(i => i.Tag as string == displayedId); }
+            finally { loadingList = false; }
+            Control<TextBlock>("Status").Text = "Save your settings before switching addons, or choose Reload to discard your edits.";
+            return;
+        }
+        await RunAsync(LoadSelectedAsync, announceSuccess: false);
+    }
     private async void StartClick(object? sender, RoutedEventArgs e) => await SelectedOperationAsync("addons.start");
     private async void StopClick(object? sender, RoutedEventArgs e) => await SelectedOperationAsync("addons.stop");
-    private async void RollbackClick(object? sender, RoutedEventArgs e) => await SelectedOperationAsync("addons.rollback");
+    private async void RollbackClick(object? sender, RoutedEventArgs e) => await RunAsync(async () =>
+    {
+        if (SelectedId is not string id) return;
+        if (!await ConfirmAsync("Restore the previous version?", "This stops the addon and restores its previous package and permission choices. Saved settings and data are kept; unsaved edits are discarded.", "Restore version")) return;
+        await CallAsync("addons.rollback", new() { ["id"] = id }); await RefreshListAsync();
+        Control<TextBlock>("Status").Text = "Previous addon version restored. Review its settings and access before starting it.";
+    }, announceSuccess: false);
     private async void RemoveClick(object? sender, RoutedEventArgs e) => await RunAsync(async () =>
     {
         if (SelectedId is not string id) return;
+        if (!await ConfirmAsync("Remove this addon?", "This stops the addon and removes its access to media, services and devices. Saved settings and data are kept for reinstallation. Unsaved edits are discarded.", "Remove addon")) return;
         await CallAsync("addons.remove", new() { ["id"] = id }); await RefreshListAsync();
         Control<TextBlock>("Status").Text = "Addon removed. Its settings and saved data are preserved.";
     }, announceSuccess: false);
     private async Task SelectedOperationAsync(string method) => await RunAsync(async () =>
     {
         if (SelectedId is not string id) return;
-        await CallAsync(method, new() { ["id"] = id }); await RefreshListAsync();
+        await CallAsync(method, new() { ["id"] = id }); await RefreshSelectedStatusAsync();
     });
     private async void SaveClick(object? sender, RoutedEventArgs e) => await RunAsync(async () =>
     {
         if (SelectedId is not string id) return;
         var changes = new JsonObject(); foreach (var (key, read) in readSettings) changes[key] = read();
-        await CallAsync("addons.configure", new() { ["id"] = id, ["changes"] = changes });
+        var updated = (JsonObject)(await CallAsync("addons.configure", new() { ["id"] = id, ["changes"] = changes }))!;
+        savedValues = (JsonObject)updated.DeepClone();
         Control<TextBlock>("SettingsNotice").IsVisible = false;
     });
 
@@ -251,10 +310,12 @@ public partial class AddonsView : UserControl
         });
         string? path = picked.FirstOrDefault()?.TryGetLocalPath(); if (path is null) return;
         await ReviewPackageAsync(path, owner);
-    });
+    }, announceSuccess: false);
 
     internal async Task ReviewPackageAsync(string path, Window owner)
     {
+        if (HasUnsavedSettings() && !await ConfirmAsync("Discard unsaved settings?", "Installing an addon reloads the list and restores saved settings. Choose Cancel to save your edits first.", "Discard changes")) return;
+        if (client?.IsConnected != true) await ConnectAsync();
         var inspected = (JsonObject)(await CallAsync("addons.inspect", new() { ["path"] = path }))!;
         var manifest = (JsonObject)inspected["manifest"]!;
         var content = new StackPanel { Margin = new Thickness(24), Spacing = 12 };
@@ -262,6 +323,7 @@ public partial class AddonsView : UserControl
         content.Children.Add(new TextBlock { Text = manifest["id"]!.GetValue<string>() + " · " + manifest["version"]!.GetValue<string>(), TextWrapping = TextWrapping.Wrap });
         content.Children.Add(new TextBlock { Text = "Local development package. Publisher identity has not been verified.", TextWrapping = TextWrapping.Wrap });
         content.Children.Add(new TextBlock { Text = "Choose the permissions to grant:", FontWeight = FontWeight.SemiBold });
+        content.Children.Add(new TextBlock { Text = "Only selected permissions are allowed. Features that need an unchecked permission may not work. You can review your choices later by installing this package again.", TextWrapping = TextWrapping.Wrap });
         var grants = new List<(string Permission, CheckBox Check)>();
         foreach (var value in (JsonArray)manifest["permissions"]!)
         {
@@ -284,14 +346,17 @@ public partial class AddonsView : UserControl
             grants.Add((permission, check)); content.Children.Add(check);
         }
         if (grants.Count == 0) content.Children.Add(new TextBlock { Text = "This addon requests no additional permissions." });
-        var dialog = new Window { Title = "Install addon", Width = 580, SizeToContent = SizeToContent.Height, CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = content };
+        var dialog = new Window { Title = "Install addon", Width = 580, MaxHeight = 640, SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = new ScrollViewer { Content = content,
+                HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled } };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
-        var cancel = new Button { Content = "Cancel" }; cancel.Click += (_, _) => dialog.Close(false);
+        var cancel = new Button { Content = "Cancel", IsCancel = true }; cancel.Click += (_, _) => dialog.Close(false);
         var install = new Button { Content = "Install" }; install.Click += (_, _) => dialog.Close(true);
         buttons.Children.Add(cancel); buttons.Children.Add(install); content.Children.Add(buttons);
         if (!await dialog.ShowDialog<bool>(owner)) return;
         var approved = new JsonArray(grants.Where(g => g.Check.IsChecked == true).Select(g => (JsonNode?)JsonValue.Create(g.Permission)).ToArray());
         await CallAsync("addons.installDev", new() { ["path"] = path, ["expectedHash"] = inspected["hash"]!.DeepClone(), ["permissions"] = approved });
-        await RefreshListAsync();
+        await RefreshListAsync(manifest["id"]!.GetValue<string>());
+        Control<TextBlock>("Status").Text = "Addon installed. " + (selectedRunning ? "It is running." : Control<Button>("StartButton").Tag is true ? "Choose Start addon when you are ready to use it." : "It will start from its configured startup event.");
     }
 }
