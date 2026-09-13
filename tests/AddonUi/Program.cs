@@ -75,8 +75,38 @@ await session.Dispatch<bool>(async () =>
     await review;
     Check(server.Granted.SequenceEqual(new[] { "storage.read" }), "Approval did not match selected permissions");
     Check(server.ReviewHash == new string('a', 64), "Install approval was not bound to the reviewed hash");
+
+    Check(Find<StackPanel>("MediaSection").IsVisible, "Approved session permission did not expose media controls");
+    string selectedPath = Path.Combine(output, "chosen video.mp4");
+    var sourceReview = view.ApproveSourceAsync(window, "org.example.ui", new string('a', 64), selectedPath);
+    await Until(() => window.OwnedWindows.Count > 0);
+    dialog = window.OwnedWindows.Single();
+    Check(dialog.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == selectedPath), "Source consent must show the exact selected file");
+    using (var frame = dialog.CaptureRenderedFrame()) frame!.Save(Path.Combine(output, "addon-media-consent.png"));
+    dialog.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Cancel").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+    await sourceReview;
+    Check(server.Sources.Count == 0, "Cancelling media consent granted file access");
+    sourceReview = view.ApproveSourceAsync(window, "org.example.ui", new string('a', 64), selectedPath);
+    await Until(() => window.OwnedWindows.Count > 0);
+    window.OwnedWindows.Single().GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Allow file").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+    await sourceReview;
+    Check(server.Sources.Count == 1 && server.MediaReviewHash == new string('a', 64), "Media consent was not bound to the reviewed addon");
+    Directory.CreateDirectory(Path.Combine(output, "data"));
+    const string savedConfiguration = "[global]\nconfig_version=3\nbackend=DirectML\n[slot_3]\nname=Saved custom\n";
+    File.WriteAllText(Path.Combine(output, "data", "animejanai.conf"), savedConfiguration);
+    var profileReview = view.ApproveProfileAsync(window, "org.example.ui", new string('a', 64));
+    await Until(() => window.OwnedWindows.Count > 0);
+    dialog = window.OwnedWindows.Single();
+    dialog.GetVisualDescendants().OfType<TextBox>().Single(t => t.Name == "ProfileName").Text = "Saved 日本語 profile";
+    using (var frame = dialog.CaptureRenderedFrame()) frame!.Save(Path.Combine(output, "addon-profile-consent.png"));
+    dialog.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Allow profile").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+    await profileReview;
+    Check(server.ProfileConfiguration == savedConfiguration && server.Profiles.Count == 1, "Approved profile did not preserve the saved configuration");
+    Find<StackPanel>("MediaFields").GetVisualDescendants().OfType<Button>().First().RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+    await Until(() => server.Sources.Count == 0 && Find<Button>("RefreshButton").IsEnabled);
+    Check(server.Profiles.Count == 1 && !server.Running, "Revocation changed an unrelated selection or left the addon running");
     await view.CloseAsync(); window.Close();
-    File.WriteAllText(Path.Combine(output, "results.json"), "{\"passed\":true,\"checks\":[\"typed settings\",\"save and reload\",\"incompatible setting repair\",\"action\",\"start/stop\",\"permissions default denied\",\"exact selected grant\",\"review hash\"]}");
+    File.WriteAllText(Path.Combine(output, "results.json"), "{\"passed\":true,\"checks\":[\"typed settings\",\"save and reload\",\"incompatible setting repair\",\"action\",\"start/stop\",\"permissions default denied\",\"exact selected grant\",\"review hash\",\"media consent cancellation\",\"exact file and package consent\",\"saved profile snapshot\",\"media access revocation\"]}");
     return true;
 }, CancellationToken.None);
 }
@@ -109,6 +139,8 @@ internal sealed class FixtureServer : IAsyncDisposable
     public string[] Granted = [];
     public string? ReviewHash;
     public string[] InvalidSettings = [];
+    public JsonArray Sources = [], Profiles = [];
+    public string? MediaReviewHash, ProfileConfiguration;
     public JsonObject Values = new() { ["enabled"] = true, ["rate"] = 20.0, ["mode"] = "normal", ["name"] = "Hello" };
     public FixtureServer(string directory) { serving = Task.Run(() => ServeAsync(directory)); }
     private async Task ServeAsync(string directory)
@@ -126,12 +158,13 @@ internal sealed class FixtureServer : IAsyncDisposable
                 var parameters = (JsonObject)request["params"]!;
                 JsonNode? result = method switch
                 {
-                    "manager.hello" => new JsonObject { ["major"] = 1 },
-                    "addons.list" => new JsonObject { ["addons"] = new JsonArray(new JsonObject { ["id"] = "org.example.ui", ["name"] = "Sample addon", ["version"] = "0.1.0", ["running"] = Running, ["manual"] = true }), ["nextCursor"] = null },
+                    "manager.hello" => new JsonObject { ["major"] = 1, ["nativeMediaAvailable"] = true },
+                    "addons.list" => new JsonObject { ["addons"] = new JsonArray(new JsonObject { ["id"] = "org.example.ui", ["name"] = "Sample addon", ["version"] = "0.1.0", ["running"] = Running, ["manual"] = true, ["hash"] = new string('a', 64), ["mediaPermission"] = true }), ["nextCursor"] = null },
                     "addons.settings" => JsonNode.Parse("""{"definitions":{"enabled":{"type":"boolean","label":"Enabled"},"rate":{"type":"number","label":"Sample rate","description":"A sample numeric setting."},"mode":{"type":"choice","label":"Mode","choices":["normal","quiet"]},"name":{"type":"string","label":"Greeting","maxLength":100}},"actions":{"check":{"label":"Check status","description":"Run an addon action."}}} """),
                     "addons.logs" => new JsonArray("Sample addon connected.", "Settings and messages are isolated from player profiles."),
                     "addons.action" => new JsonObject { ["status"] = "action received" },
                     "addons.inspect" => new JsonObject { ["manifest"] = new JsonObject { ["id"] = "org.example.ui", ["name"] = "Sample addon", ["version"] = "0.1.0", ["permissions"] = new JsonArray("storage.read", "storage.write") }, ["hash"] = new string('a', 64) },
+                    "media.selections" => new JsonObject { ["sources"] = Sources.DeepClone(), ["profiles"] = Profiles.DeepClone() },
                     _ => null,
                 };
                 if (method == "addons.settings")
@@ -147,6 +180,18 @@ internal sealed class FixtureServer : IAsyncDisposable
                 {
                     Granted = ((JsonArray)parameters["permissions"]!).Select(v => v!.GetValue<string>()).ToArray();
                     ReviewHash = parameters["expectedHash"]!.GetValue<string>();
+                }
+                if (method.StartsWith("media.") && method != "media.selections") MediaReviewHash = parameters["expectedHash"]!.GetValue<string>();
+                if (method == "media.approveSource") Sources.Add(new JsonObject { ["id"] = "source-one", ["name"] = "Chosen video", ["path"] = parameters["path"]!.DeepClone() });
+                if (method == "media.approveProfile")
+                {
+                    ProfileConfiguration = parameters["configuration"]!.GetValue<string>();
+                    Profiles.Add(new JsonObject { ["id"] = "profile-one", ["name"] = parameters["name"]!.DeepClone(), ["slot"] = parameters["slot"]!.DeepClone(), ["backend"] = parameters["backend"]!.DeepClone() });
+                }
+                if (method == "media.revoke")
+                {
+                    Running = false;
+                    if (parameters["kind"]!.GetValue<string>() == "source") Sources.Clear(); else Profiles.Clear();
                 }
                 var response = new JsonObject { ["jsonrpc"] = "2.0", ["id"] = request["id"]!.DeepClone(), ["result"] = result };
                 await writer.WriteLineAsync(response.ToJsonString());
