@@ -32,10 +32,12 @@ namespace AnimeJaNaiConfEditor.Views
             AvaloniaXamlLoader.Load(this);
             Closing += MainWindow_Closing;
             Opened += MainWindow_Opened;
+            Closed += async (_, _) => { if (this.FindControl<AddonsView>("AddonPanel") is { } addons) await addons.CloseAsync(); };
         }
 
-        private void MainWindow_Opened(object? sender, EventArgs e)
+        private async void MainWindow_Opened(object? sender, EventArgs e)
         {
+            if (this.FindControl<AddonsView>("AddonPanel") is { } addons) await addons.ManagerOpenedAsync();
             if (DataContext is MainWindowViewModel vm)
             {
 

@@ -1,0 +1,33 @@
+name: Addon Manager UI
+
+on:
+  push:
+    branches: [feature/addon-manager]
+  pull_request:
+    paths: ['AnimeJaNaiConfEditor/**', 'tests/AddonUi/**', '.github/workflows/addon-ui.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify and render addon controls
+        shell: pwsh
+        run: dotnet run --project ./tests/AddonUi/AddonUi.csproj -c Release '-p:UsedAvaloniaProducts=' -- ./addon-ui-results
+      - name: Preserve validation and screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: addon-manager-ui-results
+          path: |
+            addon-ui-results/*.json
+            addon-ui-results/*.png
+          if-no-files-found: warn
