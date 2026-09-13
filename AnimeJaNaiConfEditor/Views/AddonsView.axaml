@@ -4,7 +4,7 @@
   <Grid Margin="24" RowDefinitions="Auto,Auto,*" ColumnDefinitions="260,*" RowSpacing="14" ColumnSpacing="20">
     <StackPanel Grid.ColumnSpan="2" Spacing="8">
       <TextBlock Text="Addons" FontSize="22" FontWeight="SemiBold"/>
-      <TextBlock Text="Developer preview · Install local addons, choose permissions, and customize their settings. Video and network capabilities are not connected yet."
+      <TextBlock Text="Developer preview · Install local addons, review permissions, and customize their settings."
                  TextWrapping="Wrap" Opacity="0.75"/>
       <StackPanel Orientation="Horizontal" Spacing="8">
         <Button x:Name="ConnectButton" Content="Connect host" Click="ConnectClick"/>
@@ -24,6 +24,15 @@
           <Button x:Name="RollbackButton" Content="Previous version" Click="RollbackClick" IsEnabled="False" Margin="0,0,8,8"/>
           <Button x:Name="RemoveButton" Content="Remove" Click="RemoveClick" IsEnabled="False" Margin="0,0,8,8"/>
         </WrapPanel>
+        <StackPanel x:Name="MediaSection" IsVisible="False" Spacing="8">
+          <TextBlock Text="Processing access" FontWeight="SemiBold"/>
+          <TextBlock x:Name="MediaNotice" TextWrapping="Wrap"/>
+          <WrapPanel>
+            <Button x:Name="ApproveSourceButton" Content="Allow a media file" Click="ApproveSourceClick" Margin="0,0,8,8"/>
+            <Button x:Name="ApproveProfileButton" Content="Allow a saved profile" Click="ApproveProfileClick" Margin="0,0,8,8"/>
+          </WrapPanel>
+          <StackPanel x:Name="MediaFields" Spacing="8"/>
+        </StackPanel>
         <TextBlock x:Name="SettingsNotice" IsVisible="False" TextWrapping="Wrap"/>
         <StackPanel x:Name="SettingFields" Spacing="12"/>
         <Button x:Name="SaveButton" Content="Save settings" Click="SaveClick" IsVisible="False" HorizontalAlignment="Left"/>

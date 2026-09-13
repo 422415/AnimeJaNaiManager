@@ -83,6 +83,8 @@ public partial class AddonsView : UserControl
                 RedirectStandardOutput = true, RedirectStandardError = true,
             };
             foreach (string argument in new[] { "serve", DataDirectory, RuntimePath }) info.ArgumentList.Add(argument);
+            if (File.Exists(Path.Combine(MainWindowViewModel.RootDir, "addon-host", "native-media.json")))
+                info.ArgumentList.Add(MainWindowViewModel.RootDir);
             using var started = Process.Start(info) ?? throw new IOException("Could not start the addon host.");
             _ = DrainAsync(started.StandardOutput);
             _ = DrainAsync(started.StandardError);
@@ -138,6 +140,7 @@ public partial class AddonsView : UserControl
         Control<TextBlock>("ActionResult").Text = ""; Control<TextBox>("LogText").Text = "";
         Control<Button>("SaveButton").IsVisible = false;
         Control<TextBlock>("SettingsNotice").IsVisible = false;
+        Control<StackPanel>("MediaSection").IsVisible = false;
         string? id = SelectedId;
         if (id is null) { Control<TextBlock>("AddonTitle").Text = "No addons installed"; Control<TextBlock>("AddonState").Text = "Choose Install local addon to add a development package."; return; }
         Control<TextBlock>("AddonTitle").Text = id;
@@ -191,6 +194,7 @@ public partial class AddonsView : UserControl
             });
             Control<StackPanel>("ActionFields").Children.Add(action);
         }
+        await RefreshMediaAsync();
     }
 
     private async Task RefreshSelectedStatusAsync()
@@ -200,6 +204,8 @@ public partial class AddonsView : UserControl
         if (SelectedId != id) return;
         var row = list.FirstOrDefault(n => n!["id"]!.GetValue<string>() == id);
         if (row is null) return;
+        selectedHash = row["hash"]?.GetValue<string>();
+        mediaPermission = row["mediaPermission"]?.GetValue<bool>() == true;
         Control<TextBlock>("AddonTitle").Text = row["name"]!.GetValue<string>();
         Control<TextBlock>("AddonState").Text = id + " · " + (row["version"]?.GetValue<string>() ?? "Unavailable") + "\n" +
             (row["running"]!.GetValue<bool>() ? "Running" : "Stopped") + (row["error"] is JsonValue error ? "\n" + error.GetValue<string>() : "");
@@ -229,6 +235,7 @@ public partial class AddonsView : UserControl
         Control<ListBox>("AddonList").IsEnabled = !busy;
         Control<StackPanel>("SettingFields").IsEnabled = !busy;
         Control<StackPanel>("ActionFields").IsEnabled = !busy;
+        Control<StackPanel>("MediaSection").IsEnabled = connected && !busy;
     }
 
     private async void ConnectClick(object? sender, RoutedEventArgs e) => await RunAsync(ConnectAsync, announceSuccess: false);
@@ -286,7 +293,7 @@ public partial class AddonsView : UserControl
                 "log.write" => "Write addon log messages",
                 "storage.read" => "Read this addon's saved data",
                 "storage.write" => "Save this addon's own data",
-                "sessions.manage" => "Manage processing sessions when the host supports them",
+                "sessions.manage" => "Process media files and profiles you separately approve",
                 _ => permission,
             };
             var check = new CheckBox { Content = label, IsChecked = false };
