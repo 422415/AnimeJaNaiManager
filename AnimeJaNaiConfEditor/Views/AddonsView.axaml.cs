@@ -178,6 +178,7 @@ public partial class AddonsView : UserControl
         networkPermission = row["networkPermission"]?.GetValue<bool>() == true;
         credentialPermission = row["credentialPermission"]?.GetValue<bool>() == true;
         outputPermission = row["outputPermission"]?.GetValue<bool>() == true;
+        inputPermission = row["inputPermission"]?.GetValue<bool>() == true;
         Control<TextBlock>("AddonTitle").Text = row["name"]!.GetValue<string>();
         Control<TextBlock>("AddonState").Text = id + " · " + (row["version"]?.GetValue<string>() ?? "Unavailable") + "\n" +
             (row["running"]!.GetValue<bool>() ? "Running" : "Stopped") + (row["error"] is JsonValue error ? "\n" + error.GetValue<string>() : "");
@@ -270,11 +271,12 @@ public partial class AddonsView : UserControl
                 "log.write" => "Write addon log messages",
                 "storage.read" => "Read this addon's saved data",
                 "storage.write" => "Save this addon's own data",
-                "sessions.manage" => "Process media files and profiles you separately approve",
+                "sessions.manage" => "Process approved media using profiles you separately approve",
                 "frames.read" => "Read small image samples from media you approve",
                 "network.connect" => "Exchange data with services and devices you approve",
                 "credentials.use" => "Use saved credentials for services you approve",
                 "media.output" => "Send processed video and audio to services you separately approve",
+                "media.input" => "Read and process media from services you separately approve",
                 _ => permission,
             };
             var check = new CheckBox { Content = label, IsChecked = false };

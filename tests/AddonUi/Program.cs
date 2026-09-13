@@ -90,6 +90,18 @@ await session.Dispatch<bool>(async () =>
     await review;
     Check(server.Granted.SequenceEqual(new[] { "storage.read" }), "Cancelling output review changed the permission grant");
 
+    server.ReviewPermissions = new JsonArray("sessions.manage", "media.input", "network.connect");
+    review = view.ReviewPackageAsync("input-fixture.ajnaddon", window);
+    await Until(() => window.OwnedWindows.Count > 0);
+    dialog = window.OwnedWindows.Single();
+    var inputPermissions = dialog.GetVisualDescendants().OfType<CheckBox>().ToArray();
+    Check(inputPermissions.Length == 3 && inputPermissions.All(p => p.IsChecked == false), "Input permissions must start unchecked");
+    Check(inputPermissions.Any(p => p.Content as string == "Read and process media from services you separately approve"), "Input consent needs a clear separate label");
+    using (var frame = dialog.CaptureRenderedFrame()) frame!.Save(Path.Combine(output, "addon-input-permissions.png"));
+    dialog.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Cancel").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+    await review;
+    Check(server.Granted.SequenceEqual(new[] { "storage.read" }), "Cancelling input review changed existing grants");
+
     Check(Find<StackPanel>("MediaSection").IsVisible, "Approved session permission did not expose media controls");
     string selectedPath = Path.Combine(output, "chosen video.mp4");
     var sourceReview = view.ApproveSourceAsync(window, "org.example.ui", new string('a', 64), selectedPath);
@@ -121,7 +133,7 @@ await session.Dispatch<bool>(async () =>
     Check(server.Profiles.Count == 1 && !server.Running, "Revocation changed an unrelated selection or left the addon running");
     await NetworkUiChecks.RunAsync(view, window, server, output);
     await view.CloseAsync(); window.Close();
-    File.WriteAllText(Path.Combine(output, "results.json"), "{\"passed\":true,\"checks\":[\"typed settings\",\"save and reload\",\"incompatible setting repair\",\"action\",\"start/stop\",\"permissions default denied\",\"exact selected grant\",\"review hash\",\"media consent cancellation\",\"exact file and package consent\",\"saved profile snapshot\",\"media access revocation\",\"destination consent cancellation\",\"reviewed destination and package\",\"masked credential consent\",\"credential removal preserves destination\",\"destination removal preserves media\",\"output permissions default denied\",\"output permission review cancellation\",\"media output destination disclosure\"]}");
+    File.WriteAllText(Path.Combine(output, "results.json"), "{\"passed\":true,\"checks\":[\"typed settings\",\"save and reload\",\"incompatible setting repair\",\"action\",\"start/stop\",\"permissions default denied\",\"exact selected grant\",\"review hash\",\"media consent cancellation\",\"exact file and package consent\",\"saved profile snapshot\",\"media access revocation\",\"destination consent cancellation\",\"reviewed destination and package\",\"masked credential consent\",\"credential removal preserves destination\",\"destination removal preserves media\",\"output permissions default denied\",\"output permission review cancellation\",\"media output destination disclosure\",\"media input permissions default denied\",\"media input review cancellation\",\"media input destination disclosure\"]}");
     return true;
 }, CancellationToken.None);
 }
@@ -183,7 +195,7 @@ internal sealed class FixtureServer : IAsyncDisposable
                     "manager.hello" => new JsonObject { ["major"] = 1, ["nativeMediaAvailable"] = true, ["networkAvailable"] = true, ["credentialsAvailable"] = true, ["hostSettingsAvailable"] = true, ["loginSettingsAvailable"] = true },
                     "host.settings" => new JsonObject { ["maximumConcurrentSessions"] = HostCapacity, ["minimum"] = 1, ["maximum"] = 16, ["editable"] = HostEditable },
                     "host.login" => new JsonObject { ["enabled"] = LoginEnabled, ["available"] = LoginAvailable, ["registeredElsewhere"] = false },
-                    "addons.list" => new JsonObject { ["addons"] = new JsonArray(new JsonObject { ["id"] = "org.example.ui", ["name"] = "Sample addon", ["version"] = "0.1.0", ["running"] = Running, ["manual"] = true, ["hash"] = new string('a', 64), ["mediaPermission"] = true, ["networkPermission"] = true, ["credentialPermission"] = true, ["outputPermission"] = true }), ["nextCursor"] = null },
+                    "addons.list" => new JsonObject { ["addons"] = new JsonArray(new JsonObject { ["id"] = "org.example.ui", ["name"] = "Sample addon", ["version"] = "0.1.0", ["running"] = Running, ["manual"] = true, ["hash"] = new string('a', 64), ["mediaPermission"] = true, ["networkPermission"] = true, ["credentialPermission"] = true, ["outputPermission"] = true, ["inputPermission"] = true }), ["nextCursor"] = null },
                     "addons.settings" => JsonNode.Parse("""{"definitions":{"enabled":{"type":"boolean","label":"Enabled"},"rate":{"type":"number","label":"Sample rate","description":"A sample numeric setting."},"mode":{"type":"choice","label":"Mode","choices":["normal","quiet"]},"name":{"type":"string","label":"Greeting","maxLength":100}},"actions":{"check":{"label":"Check status","description":"Run an addon action."}}} """),
                     "addons.logs" => new JsonArray("Sample addon connected.", "Settings and messages are isolated from player profiles."),
                     "addons.action" => new JsonObject { ["status"] = "action received" },
