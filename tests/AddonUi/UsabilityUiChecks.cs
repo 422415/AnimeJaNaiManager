@@ -61,6 +61,7 @@ internal static class UsabilityUiChecks
         await Choose("Cancel"); await largeReview;
         var draft = Find<StackPanel>("SettingFields").GetVisualDescendants().OfType<TextBox>().Last();
         draft.Text = "Keep this draft";
+        ((TabControl)window.Content!).SelectedIndex = 0;
         window.Close(); await Choose("Cancel");
         Check(window.IsVisible && draft.Text == "Keep this draft", "Closing Manager lost unsaved addon settings");
         window.Close(); await Choose("Discard and close");
@@ -69,7 +70,7 @@ internal static class UsabilityUiChecks
             "unused tab stays idle", "opening tab connects automatically", "reopening tab reuses connection", "stopped action does not create temporary work",
             "unsaved selection protected", "reload cancellation preserves draft", "explicit discard restores settings", "removal cancellation",
             "actionable permission error", "technical details retained", "offline guides discoverable", "plain creator messages",
-            "close cancellation preserves draft", "explicit close discards draft without saving", "start preserves draft", "stop preserves draft",
+            "closing from another tab preserves draft on cancel", "explicit close discards draft without saving", "start preserves draft", "stop preserves draft",
             "media changes preserve draft", "service changes preserve draft", "large review fits and scrolls", "all permissions still default denied" } }));
     }
     internal static async Task MissingRuntimeAsync(string output)

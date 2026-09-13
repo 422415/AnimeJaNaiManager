@@ -26,7 +26,7 @@ public partial class AddonsView
             confirming = true;
             try
             {
-                if (await ConfirmAsync("Unsaved addon settings", "Your addon settings have not been saved. Cancel to keep editing, or close Manager and discard these changes.", "Discard and close"))
+                if (await ConfirmAsync("Unsaved addon settings", "Your addon settings have not been saved. Cancel to keep editing, or close Manager and discard these changes.", "Discard and close", owner))
                 { approved = true; owner.Close(); }
             }
             catch (Exception error) { ShowError(error); }
@@ -80,9 +80,9 @@ public partial class AddonsView
         Control<Expander>("ErrorDetails").IsExpanded = false;
     }
 
-    private async Task<bool> ConfirmAsync(string title, string message, string accept)
+    private async Task<bool> ConfirmAsync(string title, string message, string accept, Window? dialogOwner = null)
     {
-        var owner = TopLevel.GetTopLevel(this) as Window ?? throw new IOException("Could not open this confirmation.");
+        var owner = dialogOwner ?? TopLevel.GetTopLevel(this) as Window ?? throw new IOException("Could not open this confirmation.");
         var panel = new StackPanel { Margin = new Avalonia.Thickness(24), Spacing = 16 };
         var dialog = new Window { Title = title, Width = 540, SizeToContent = SizeToContent.Height,
             CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = panel };
