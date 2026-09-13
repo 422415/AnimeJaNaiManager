@@ -102,6 +102,19 @@ await session.Dispatch<bool>(async () =>
     await review;
     Check(server.Granted.SequenceEqual(new[] { "storage.read" }), "Cancelling input review changed existing grants");
 
+    server.ReviewPermissions = new JsonArray("frames.read", "player.observe");
+    review = view.ReviewPackageAsync("player-fixture.ajnaddon", window);
+    await Until(() => window.OwnedWindows.Count > 0);
+    dialog = window.OwnedWindows.Single();
+    var playerPermissions = dialog.GetVisualDescendants().OfType<CheckBox>().ToArray();
+    Check(playerPermissions.Length == 2 && playerPermissions.All(p => p.IsChecked == false), "Player observation permissions must start unchecked");
+    Check(playerPermissions.Any(p => p.Content as string == "Read small image samples from videos played in AJN"), "Player observation needs a separate clear disclosure");
+    using (var frame = dialog.CaptureRenderedFrame()) frame!.Save(Path.Combine(output, "addon-player-permissions.png"));
+    dialog.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Cancel").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+    await review;
+    Check(server.Granted.SequenceEqual(new[] { "storage.read" }), "Cancelling player observation review changed existing grants");
+    File.WriteAllText(Path.Combine(output, "player-results.json"), "{\"passed\":true,\"checks\":[\"player observation default denied\",\"separate normal-player disclosure\",\"cancel preserves grants\"]}");
+
     Check(Find<StackPanel>("MediaSection").IsVisible, "Approved session permission did not expose media controls");
     string selectedPath = Path.Combine(output, "chosen video.mp4");
     var sourceReview = view.ApproveSourceAsync(window, "org.example.ui", new string('a', 64), selectedPath);
