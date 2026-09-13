@@ -1128,7 +1128,7 @@ chain_2_rife=no";
                 parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_factor_numerator", string.Create(ENGLISH_CULTURE, $"{chain.RifeFactorNumerator ?? 0}"));
                 parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_factor_denominator", string.Create(ENGLISH_CULTURE, $"{chain.RifeFactorDenominator ?? 1}"));
                 parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_model", string.Create(ENGLISH_CULTURE, $"{RifeLabelToValue(chain.RifeModel)}"));
-                parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_ensemble", string.Create(ENGLISH_CULTURE, $"{chain.RifeEnsemble}"));
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_ensemble", chain.RifeEnsemble ? "yes" : "no");
                 parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_scene_detect_threshold", string.Create(ENGLISH_CULTURE, $"{chain.RifeSceneDetectThreshold ?? 0.015M}"));
                 parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_before_upscale", chain.RifeBeforeUpscale ? "yes" : "no");
             }
