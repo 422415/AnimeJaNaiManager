@@ -11,16 +11,17 @@ using System.IO.Pipes;
 using System.Text;
 using System.Text.Json.Nodes;
 
-if (args.Length != 1) { Console.WriteLine("AddonUi <new-output-directory>"); return 2; }
+if (args.Length is not (1 or 2)) { Console.WriteLine("AddonUi <new-output-directory> [integrated-preview-root]"); return 2; }
 string output = Path.GetFullPath(args[0]); Directory.CreateDirectory(output);
 Environment.SetEnvironmentVariable("ANIMEJANAI_DATA_DIR", Path.Combine(output, "data"));
-Environment.SetEnvironmentVariable("ANIMEJANAI_ROOT", output);
-await using var server = new FixtureServer(Path.Combine(output, "data", "addons"));
+Environment.SetEnvironmentVariable("ANIMEJANAI_ROOT", args.Length == 2 ? Path.GetFullPath(args[1]) : output);
+await using var server = args.Length == 1 ? new FixtureServer(Path.Combine(output, "data", "addons")) : null;
 var session = HeadlessUnitTestSession.StartNew(typeof(TestApp));
 try
 {
 await session.Dispatch<bool>(async () =>
 {
+    if (args.Length == 2) return await RealHostChecks.RunAsync(output, Path.GetFullPath(args[1]));
     Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
     var view = new AddonsView();
     var window = new Window { Width = 1100, Height = 820, Content = view, Title = "AJN addon preview" };
@@ -46,8 +47,8 @@ await session.Dispatch<bool>(async () =>
     fields[2].Children.OfType<ComboBox>().Single().SelectedItem = "quiet";
     fields[3].Children.OfType<TextBox>().Single().Text = "Saved 日本語";
     Click("SaveButton");
-    await Until(() => server.Values["rate"]?.GetValue<double>() == 35.5 && Find<Button>("SaveButton").IsEnabled);
-    Check(server.Values["enabled"]!.GetValue<bool>() == false && server.Values["name"]!.GetValue<string>() == "Saved 日本語", "Settings were not saved faithfully");
+    await Until(() => server!.Values["rate"]?.GetValue<double>() == 35.5 && Find<Button>("SaveButton").IsEnabled);
+    Check(server!.Values["enabled"]!.GetValue<bool>() == false && server.Values["name"]!.GetValue<string>() == "Saved 日本語", "Settings were not saved faithfully");
     Click("RefreshButton"); await Until(() => Find<Button>("RefreshButton").IsEnabled);
     Check(Find<StackPanel>("SettingFields").Children.OfType<StackPanel>().Last().Children.OfType<TextBox>().Single().Text == "Saved 日本語", "Saved values were lost on refresh");
     server.InvalidSettings = ["rate"];
@@ -78,6 +79,12 @@ await session.Dispatch<bool>(async () =>
     File.WriteAllText(Path.Combine(output, "results.json"), "{\"passed\":true,\"checks\":[\"typed settings\",\"save and reload\",\"incompatible setting repair\",\"action\",\"start/stop\",\"permissions default denied\",\"exact selected grant\",\"review hash\"]}");
     return true;
 }, CancellationToken.None);
+}
+catch (Exception error)
+{
+    Console.Error.WriteLine("FAIL " + error);
+    File.WriteAllText(Path.Combine(output, "results.json"), System.Text.Json.JsonSerializer.Serialize(new { passed = false, error = error.ToString() }));
+    return 1;
 }
 finally
 {

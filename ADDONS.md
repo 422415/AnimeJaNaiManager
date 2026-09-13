@@ -21,3 +21,5 @@ dotnet run --project ./tests/AddonUi/AddonUi.csproj -c Release '-p:UsedAvaloniaP
 ```
 
 The headless Avalonia test opens no desktop windows. It checks settings through save/reload, actions, start/stop, explicit permissions, and package-hash binding. It writes `results.json`, `addon-manager.png` and `addon-permissions.png`. The MSBuild property disables the dependency's usage-telemetry task during testing; it does not disable compilation or validation. The private pipe requires a normal same-user Windows token.
+
+Pass an integrated preview root as a second argument to test the actual packaged host instead of the UI fixture. That root needs `addon-host/ajn-addon.exe`, `addon-host/runtime/wasmtime.exe` and `addon-development/counter.ajnaddon`. This path starts the host from Manager, installs the example with reviewed permissions, changes settings, closes/reopens the page with a manual activation, invokes real Wasm actions, checks durable storage, removes the addon and verifies clean idle exit. It uses a new isolated data directory under the test output and captures `addon-real-host.png`. CI builds the pinned matching host and runs both scenarios.
