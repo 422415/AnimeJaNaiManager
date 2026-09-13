@@ -22,6 +22,23 @@ jobs:
       - name: Verify and render addon controls
         shell: pwsh
         run: dotnet run --project ./tests/AddonUi/AddonUi.csproj -c Release '-p:UsedAvaloniaProducts=' -- ./addon-ui-results
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: 422415/mpv-AnimeJaNai
+          ref: 863c790990b4b6dbc0f7141867eb32ace85e8a0e
+          path: host-source
+      - name: Prepare the matching packaged host
+        shell: pwsh
+        run: |
+          ./host-source/addons/tools/bootstrap.ps1
+          ./host-source/addons/tools/package.ps1 -OutputDirectory ./host-bundle
+          New-Item -ItemType Directory -Path integration-root/addon-development -Force | Out-Null
+          Copy-Item -LiteralPath ./host-bundle/host -Destination ./integration-root/addon-host -Recurse
+          Copy-Item -LiteralPath ./host-bundle/runtime -Destination ./integration-root/addon-host/runtime -Recurse
+          Copy-Item -LiteralPath ./host-bundle/counter.ajnaddon -Destination ./integration-root/addon-development
+      - name: Verify Manager with the packaged host and real Wasm addon
+        shell: pwsh
+        run: dotnet run --project ./tests/AddonUi/AddonUi.csproj -c Release '-p:UsedAvaloniaProducts=' -- ./addon-integration-results ./integration-root
       - name: Preserve validation and screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -30,4 +47,6 @@ jobs:
           path: |
             addon-ui-results/*.json
             addon-ui-results/*.png
+            addon-integration-results/*.json
+            addon-integration-results/*.png
           if-no-files-found: warn

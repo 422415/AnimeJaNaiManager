@@ -5,6 +5,11 @@
 
 # User-specific files
 /addon-ui-results/
+/addon-integration-results/
+/host-source/
+/host-bundle/
+/host-bundle.zip
+/integration-root/
 *.rsuser
 *.suo
 *.user
