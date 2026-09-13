@@ -24,6 +24,7 @@ internal static class NetworkUiChecks
         var dialog = window.OwnedWindows.Single();
         Check(dialog.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text == origin), "Destination origin must be visible.");
         Check(dialog.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text?.Contains("127.0.0.1") == true), "Resolved addresses must be visible.");
+        Check(dialog.GetVisualDescendants().OfType<TextBlock>().Any(t => t.Text?.Contains("send processed video and audio") == true), "An addon with media output permission must disclose media delivery in destination review.");
         using (var image = dialog.CaptureRenderedFrame()) image!.Save(Path.Combine(output, "addon-destination-consent.png"));
         dialog.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Cancel").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         await review; Check(server.Destinations.Count == 0, "Cancelled review granted destination access.");
