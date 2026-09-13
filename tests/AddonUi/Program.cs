@@ -105,8 +105,9 @@ await session.Dispatch<bool>(async () =>
     Find<StackPanel>("MediaFields").GetVisualDescendants().OfType<Button>().First().RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
     await Until(() => server.Sources.Count == 0 && Find<Button>("RefreshButton").IsEnabled);
     Check(server.Profiles.Count == 1 && !server.Running, "Revocation changed an unrelated selection or left the addon running");
+    await NetworkUiChecks.RunAsync(view, window, server, output);
     await view.CloseAsync(); window.Close();
-    File.WriteAllText(Path.Combine(output, "results.json"), "{\"passed\":true,\"checks\":[\"typed settings\",\"save and reload\",\"incompatible setting repair\",\"action\",\"start/stop\",\"permissions default denied\",\"exact selected grant\",\"review hash\",\"media consent cancellation\",\"exact file and package consent\",\"saved profile snapshot\",\"media access revocation\"]}");
+    File.WriteAllText(Path.Combine(output, "results.json"), "{\"passed\":true,\"checks\":[\"typed settings\",\"save and reload\",\"incompatible setting repair\",\"action\",\"start/stop\",\"permissions default denied\",\"exact selected grant\",\"review hash\",\"media consent cancellation\",\"exact file and package consent\",\"saved profile snapshot\",\"media access revocation\",\"destination consent cancellation\",\"reviewed destination and package\",\"masked credential consent\",\"credential removal preserves destination\",\"destination removal preserves media\"]}");
     return true;
 }, CancellationToken.None);
 }
@@ -141,6 +142,8 @@ internal sealed class FixtureServer : IAsyncDisposable
     public string[] InvalidSettings = [];
     public JsonArray Sources = [], Profiles = [];
     public string? MediaReviewHash, ProfileConfiguration;
+    public JsonArray Destinations = [];
+    public string? NetworkReviewHash, NetworkReviewId, CredentialValue;
     public JsonObject Values = new() { ["enabled"] = true, ["rate"] = 20.0, ["mode"] = "normal", ["name"] = "Hello" };
     public FixtureServer(string directory) { serving = Task.Run(() => ServeAsync(directory)); }
     private async Task ServeAsync(string directory)
@@ -158,13 +161,15 @@ internal sealed class FixtureServer : IAsyncDisposable
                 var parameters = (JsonObject)request["params"]!;
                 JsonNode? result = method switch
                 {
-                    "manager.hello" => new JsonObject { ["major"] = 1, ["nativeMediaAvailable"] = true },
-                    "addons.list" => new JsonObject { ["addons"] = new JsonArray(new JsonObject { ["id"] = "org.example.ui", ["name"] = "Sample addon", ["version"] = "0.1.0", ["running"] = Running, ["manual"] = true, ["hash"] = new string('a', 64), ["mediaPermission"] = true }), ["nextCursor"] = null },
+                    "manager.hello" => new JsonObject { ["major"] = 1, ["nativeMediaAvailable"] = true, ["networkAvailable"] = true, ["credentialsAvailable"] = true },
+                    "addons.list" => new JsonObject { ["addons"] = new JsonArray(new JsonObject { ["id"] = "org.example.ui", ["name"] = "Sample addon", ["version"] = "0.1.0", ["running"] = Running, ["manual"] = true, ["hash"] = new string('a', 64), ["mediaPermission"] = true, ["networkPermission"] = true, ["credentialPermission"] = true }), ["nextCursor"] = null },
                     "addons.settings" => JsonNode.Parse("""{"definitions":{"enabled":{"type":"boolean","label":"Enabled"},"rate":{"type":"number","label":"Sample rate","description":"A sample numeric setting."},"mode":{"type":"choice","label":"Mode","choices":["normal","quiet"]},"name":{"type":"string","label":"Greeting","maxLength":100}},"actions":{"check":{"label":"Check status","description":"Run an addon action."}}} """),
                     "addons.logs" => new JsonArray("Sample addon connected.", "Settings and messages are isolated from player profiles."),
                     "addons.action" => new JsonObject { ["status"] = "action received" },
                     "addons.inspect" => new JsonObject { ["manifest"] = new JsonObject { ["id"] = "org.example.ui", ["name"] = "Sample addon", ["version"] = "0.1.0", ["permissions"] = new JsonArray("storage.read", "storage.write") }, ["hash"] = new string('a', 64) },
                     "media.selections" => new JsonObject { ["sources"] = Sources.DeepClone(), ["profiles"] = Profiles.DeepClone() },
+                    "network.selections" => new JsonObject { ["destinations"] = Destinations.DeepClone() },
+                    "network.inspectDestination" => new JsonObject { ["origin"] = parameters["origin"]!.DeepClone(), ["protocol"] = "http", ["addresses"] = new JsonArray("127.0.0.1"), ["reviewId"] = "review-one" },
                     _ => null,
                 };
                 if (method == "addons.settings")
@@ -182,6 +187,19 @@ internal sealed class FixtureServer : IAsyncDisposable
                     ReviewHash = parameters["expectedHash"]!.GetValue<string>();
                 }
                 if (method.StartsWith("media.") && method != "media.selections") MediaReviewHash = parameters["expectedHash"]!.GetValue<string>();
+                if (method.StartsWith("network.") && method != "network.selections") NetworkReviewHash = parameters["expectedHash"]!.GetValue<string>();
+                if (method == "network.approveDestination")
+                {
+                    NetworkReviewId = parameters["reviewId"]!.GetValue<string>();
+                    Destinations.Add(new JsonObject { ["id"] = "destination-one", ["name"] = parameters["name"]!.DeepClone(), ["origin"] = "http://127.0.0.1:19001", ["protocol"] = "http", ["addresses"] = new JsonArray("127.0.0.1"), ["hasCredential"] = false });
+                }
+                if (method == "network.setCredential")
+                {
+                    CredentialValue = parameters["value"]!.GetValue<string>(); Running = false;
+                    Destinations[0]!["hasCredential"] = true; Destinations[0]!["credentialHeader"] = parameters["header"]!.DeepClone();
+                }
+                if (method == "network.removeCredential") { CredentialValue = null; Destinations[0]!["hasCredential"] = false; Destinations[0]!["credentialHeader"] = null; Running = false; }
+                if (method == "network.revoke") { Destinations.Clear(); Running = false; }
                 if (method == "media.approveSource") Sources.Add(new JsonObject { ["id"] = "source-one", ["name"] = "Chosen video", ["path"] = parameters["path"]!.DeepClone() });
                 if (method == "media.approveProfile")
                 {

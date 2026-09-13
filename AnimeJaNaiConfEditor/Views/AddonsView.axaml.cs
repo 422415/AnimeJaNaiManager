@@ -141,6 +141,7 @@ public partial class AddonsView : UserControl
         Control<Button>("SaveButton").IsVisible = false;
         Control<TextBlock>("SettingsNotice").IsVisible = false;
         Control<StackPanel>("MediaSection").IsVisible = false;
+        Control<StackPanel>("NetworkSection").IsVisible = false;
         string? id = SelectedId;
         if (id is null) { Control<TextBlock>("AddonTitle").Text = "No addons installed"; Control<TextBlock>("AddonState").Text = "Choose Install local addon to add a development package."; return; }
         Control<TextBlock>("AddonTitle").Text = id;
@@ -195,6 +196,7 @@ public partial class AddonsView : UserControl
             Control<StackPanel>("ActionFields").Children.Add(action);
         }
         await RefreshMediaAsync();
+        await RefreshNetworkAsync();
     }
 
     private async Task RefreshSelectedStatusAsync()
@@ -206,6 +208,8 @@ public partial class AddonsView : UserControl
         if (row is null) return;
         selectedHash = row["hash"]?.GetValue<string>();
         mediaPermission = row["mediaPermission"]?.GetValue<bool>() == true;
+        networkPermission = row["networkPermission"]?.GetValue<bool>() == true;
+        credentialPermission = row["credentialPermission"]?.GetValue<bool>() == true;
         Control<TextBlock>("AddonTitle").Text = row["name"]!.GetValue<string>();
         Control<TextBlock>("AddonState").Text = id + " · " + (row["version"]?.GetValue<string>() ?? "Unavailable") + "\n" +
             (row["running"]!.GetValue<bool>() ? "Running" : "Stopped") + (row["error"] is JsonValue error ? "\n" + error.GetValue<string>() : "");
@@ -236,6 +240,7 @@ public partial class AddonsView : UserControl
         Control<StackPanel>("SettingFields").IsEnabled = !busy;
         Control<StackPanel>("ActionFields").IsEnabled = !busy;
         Control<StackPanel>("MediaSection").IsEnabled = connected && !busy;
+        Control<StackPanel>("NetworkSection").IsEnabled = connected && !busy;
     }
 
     private async void ConnectClick(object? sender, RoutedEventArgs e) => await RunAsync(ConnectAsync, announceSuccess: false);
@@ -295,6 +300,8 @@ public partial class AddonsView : UserControl
                 "storage.write" => "Save this addon's own data",
                 "sessions.manage" => "Process media files and profiles you separately approve",
                 "frames.read" => "Read small image samples from media you approve",
+                "network.connect" => "Exchange data with services and devices you approve",
+                "credentials.use" => "Use saved credentials for services you approve",
                 _ => permission,
             };
             var check = new CheckBox { Content = label, IsChecked = false };
