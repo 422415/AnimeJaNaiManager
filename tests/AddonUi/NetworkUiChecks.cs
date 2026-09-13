@@ -17,6 +17,8 @@ internal static class NetworkUiChecks
             while (!ready()) await Task.Delay(20, timeout.Token);
         }
         Check(Find<StackPanel>("NetworkSection").IsVisible, "Granted service permission did not expose controls.");
+        var draft = Find<StackPanel>("SettingFields").GetVisualDescendants().OfType<TextBox>().Last();
+        string saved = draft.Text!; draft.Text = "Pending service setup";
         const string origin = "http://127.0.0.1:19001", id = "org.example.ui";
         string hash = new('a', 64);
         var review = view.ApproveDestinationAsync(window, id, hash, "Local test service", origin);
@@ -52,5 +54,7 @@ internal static class NetworkUiChecks
         Find<StackPanel>("NetworkFields").GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Remove access").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         await Until(() => server.Destinations.Count == 0 && Find<Button>("RefreshButton").IsEnabled);
         Check(server.Profiles.Count == 1, "Destination revocation changed media access.");
+        Check(draft.Text == "Pending service setup" && Find<StackPanel>("SettingFields").GetVisualDescendants().Contains(draft), "Service or credential changes discarded unsaved addon settings.");
+        draft.Text = saved;
     }
 }

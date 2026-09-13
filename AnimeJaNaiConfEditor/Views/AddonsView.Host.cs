@@ -14,7 +14,7 @@ public partial class AddonsView
 {
     private async void HostSettingsClick(object? sender, RoutedEventArgs e) => await RunAsync(async () =>
     {
-        var owner = TopLevel.GetTopLevel(this) as Window ?? throw new IOException("Could not open host settings.");
+        var owner = TopLevel.GetTopLevel(this) as Window ?? throw new IOException("Could not open performance limits.");
         await EditHostSettingsAsync(owner);
     }, announceSuccess: false);
 
@@ -23,7 +23,7 @@ public partial class AddonsView
         var current = await CallAsync("host.settings");
         bool editable = current!["editable"]!.GetValue<bool>();
         var panel = new StackPanel { Margin = new Thickness(24), Spacing = 12 };
-        var dialog = new Window { Title = "Addon host settings", Width = 570, SizeToContent = SizeToContent.Height,
+        var dialog = new Window { Title = "Addon performance limits", Width = 570, SizeToContent = SizeToContent.Height,
             CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = panel };
         panel.Children.Add(new TextBlock { Text = "Addon processing capacity", FontSize = 20, FontWeight = FontWeight.SemiBold });
         panel.Children.Add(new TextBlock { Text = "Maximum simultaneous processing sessions across all addons", TextWrapping = TextWrapping.Wrap });
@@ -31,8 +31,8 @@ public partial class AddonsView
             MaxLength = 3, IsReadOnly = !editable };
         panel.Children.Add(limit);
         panel.Children.Add(new TextBlock { Text = editable
-            ? "Choose 1 to 16. Existing sessions continue if you lower this limit. The host admits new sessions when there is room; each addon decides how many to request."
-            : "This host was started with an explicit command-line limit. Restart it without that argument to use saved settings.", TextWrapping = TextWrapping.Wrap });
+            ? "Choose 1 to 16. Existing sessions continue if you lower this limit. New processing starts when there is room; each addon decides how many sessions to request."
+            : "A developer launch option controls this limit. Close that development session and reopen AJN normally to use saved settings.", TextWrapping = TextWrapping.Wrap });
         panel.Children.Add(new TextBlock { Text = "More concurrent processing uses more GPU and system resources. This setting covers background addon sessions; it does not change your player's profile.", TextWrapping = TextWrapping.Wrap });
         var errorText = new TextBlock { Name = "HostSettingsError", IsVisible = false, TextWrapping = TextWrapping.Wrap };
         panel.Children.Add(errorText);
@@ -50,7 +50,7 @@ public partial class AddonsView
             try
             {
                 await CallAsync("host.configure", new() { ["maximumConcurrentSessions"] = value });
-                Control<TextBlock>("Status").Text = "Host capacity saved. Existing sessions continue; new sessions use this limit.";
+                Control<TextBlock>("Status").Text = "Performance limit saved. Existing sessions continue; new sessions use this limit.";
                 dialog.Close();
             }
             catch (Exception error) { errorText.Text = error.Message; errorText.IsVisible = true; }

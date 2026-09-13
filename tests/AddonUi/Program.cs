@@ -24,7 +24,9 @@ await session.Dispatch<bool>(async () =>
     if (args.Length == 2) return await RealHostChecks.RunAsync(output, Path.GetFullPath(args[1]));
     Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
     var view = new AddonsView();
-    var window = new Window { Width = 1100, Height = 820, Content = view, Title = "AJN addon preview" };
+    var tabs = new TabControl { Items = { new TabItem { Header = "Player", Content = new TextBlock { Text = "Player settings" } }, new TabItem { Header = "Addons", Content = view } }, SelectedIndex = 0 };
+    var window = new Window { Width = 1100, Height = 820, Content = tabs, Title = "AJN addon preview" };
+    view.ProtectUnsavedSettingsOnClose(window);
     window.Show();
     T Find<T>(string name) where T : Control => view.FindControl<T>(name)!;
     void Click(string name) => Find<Button>(name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -35,10 +37,15 @@ await session.Dispatch<bool>(async () =>
     }
     void Check(bool value, string message) { if (!value) throw new Exception(message + " Status: " + Find<TextBlock>("Status").Text); }
 
-    Click("ConnectButton");
+    await Task.Delay(150);
+    Check(server!.Connections == 0, "An unused Addons tab should not connect an empty installation");
+    tabs.SelectedIndex = 1;
     await Until(() => Find<Button>("InstallButton").IsEnabled);
+    Check(view.FindControl<Button>("ConnectButton") is null && !Find<Button>("RetryButton").IsVisible, "Opening Addons must be automatic");
     Check(Find<TextBlock>("AddonTitle").Text == "Sample addon", "Addon was not loaded");
     Check(Find<StackPanel>("SettingFields").Children.Count == 4, "Missing typed settings controls");
+    tabs.SelectedIndex = 0; tabs.SelectedIndex = 1; await Task.Delay(150);
+    Check(server.Connections == 1, "Reopening Addons duplicated the connection");
     await HostSettingsUiChecks.RunAsync(view, window, server!, output);
     await LoginUiChecks.RunAsync(view, window, server!, output);
     await Task.Delay(100);
@@ -61,10 +68,14 @@ await session.Dispatch<bool>(async () =>
     Click("SaveButton"); await Until(() => Find<Button>("SaveButton").IsEnabled);
     Check(server.Values["rate"]!.GetValue<double>() == 21 && !Find<TextBlock>("SettingsNotice").IsVisible, "Could not repair incompatible setting");
     var action = Find<StackPanel>("ActionFields").Children.OfType<Button>().Single();
+    Check(!Find<StackPanel>("ActionFields").IsEnabled && Find<TextBlock>("ActionsNotice").IsVisible, "Stopped actions must explain how to start the addon");
+    action.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+    await Until(() => Find<TextBlock>("Status").Text == "Start this addon before using its actions.");
+    Check(server.ActionCalls == 0, "Stopped action reached the temporary-action API");
+    Click("StartButton"); await Until(() => server.Running && Find<Button>("StartButton").IsEnabled);
     action.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
     await Until(() => Find<TextBlock>("ActionResult").Text?.Contains("action received") == true);
-    Click("StartButton"); await Until(() => server.Running && Find<Button>("StartButton").IsEnabled);
-    Click("StopButton"); await Until(() => !server.Running && Find<Button>("StopButton").IsEnabled);
+    Click("StopButton"); await Until(() => !server.Running && Find<Button>("RefreshButton").IsEnabled);
 
     var review = view.ReviewPackageAsync("fixture.ajnaddon", window);
     await Until(() => window.OwnedWindows.Count > 0);
@@ -141,11 +152,17 @@ await session.Dispatch<bool>(async () =>
     dialog.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Allow profile").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
     await profileReview;
     Check(server.ProfileConfiguration == savedConfiguration && server.Profiles.Count == 1, "Approved profile did not preserve the saved configuration");
+    var mediaDraft = Find<StackPanel>("SettingFields").GetVisualDescendants().OfType<TextBox>().Last();
+    string beforeMedia = mediaDraft.Text!; mediaDraft.Text = "Pending media setup";
     Find<StackPanel>("MediaFields").GetVisualDescendants().OfType<Button>().First().RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
     await Until(() => server.Sources.Count == 0 && Find<Button>("RefreshButton").IsEnabled);
     Check(server.Profiles.Count == 1 && !server.Running, "Revocation changed an unrelated selection or left the addon running");
+    Check(mediaDraft.Text == "Pending media setup" && Find<StackPanel>("SettingFields").GetVisualDescendants().Contains(mediaDraft), "Removing media access lost unsaved settings");
+    mediaDraft.Text = beforeMedia;
     await NetworkUiChecks.RunAsync(view, window, server, output);
+    await UsabilityUiChecks.RunAsync(view, window, server, output);
     await view.CloseAsync(); window.Close();
+    await UsabilityUiChecks.MissingRuntimeAsync(output);
     File.WriteAllText(Path.Combine(output, "results.json"), "{\"passed\":true,\"checks\":[\"typed settings\",\"save and reload\",\"incompatible setting repair\",\"action\",\"start/stop\",\"permissions default denied\",\"exact selected grant\",\"review hash\",\"media consent cancellation\",\"exact file and package consent\",\"saved profile snapshot\",\"media access revocation\",\"destination consent cancellation\",\"reviewed destination and package\",\"masked credential consent\",\"credential removal preserves destination\",\"destination removal preserves media\",\"output permissions default denied\",\"output permission review cancellation\",\"media output destination disclosure\",\"media input permissions default denied\",\"media input review cancellation\",\"media input destination disclosure\"]}");
     return true;
 }, CancellationToken.None);
@@ -173,6 +190,10 @@ public class TestApp
 
 internal sealed class FixtureServer : IAsyncDisposable
 {
+    public int ActionCalls;
+    public int Connections, RemoveCalls;
+    public bool FailNextStart;
+    public JsonObject? ExtraAddon;
     private readonly CancellationTokenSource lifetime = new();
     private readonly Task serving;
     public bool Running;
@@ -203,6 +224,16 @@ internal sealed class FixtureServer : IAsyncDisposable
                 string? line = await reader.ReadLineAsync(lifetime.Token); if (line is null) return;
                 var request = JsonNode.Parse(line)!; string method = request["method"]!.GetValue<string>();
                 var parameters = (JsonObject)request["params"]!;
+                if (method == "manager.hello") Connections++;
+                if (method == "addons.action") ActionCalls++;
+                if (method == "addons.remove") RemoveCalls++;
+                if (method == "addons.start" && FailNextStart)
+                {
+                    FailNextStart = false;
+                    await writer.WriteLineAsync(new JsonObject { ["jsonrpc"] = "2.0", ["id"] = request["id"]!.DeepClone(),
+                        ["error"] = new JsonObject { ["code"] = -32000, ["message"] = "Permission not granted: storage.write.", ["data"] = new JsonObject { ["code"] = "permission_denied" } } }.ToJsonString());
+                    continue;
+                }
                 JsonNode? result = method switch
                 {
                     "manager.hello" => new JsonObject { ["major"] = 1, ["nativeMediaAvailable"] = true, ["networkAvailable"] = true, ["credentialsAvailable"] = true, ["hostSettingsAvailable"] = true, ["loginSettingsAvailable"] = true },
@@ -219,6 +250,7 @@ internal sealed class FixtureServer : IAsyncDisposable
                     _ => null,
                 };
                 if (method == "host.configure") { HostCapacity = parameters["maximumConcurrentSessions"]!.GetValue<int>(); HostSaves++; }
+                if (method == "addons.list" && ExtraAddon is not null) ((JsonArray)result!["addons"]!).Add(ExtraAddon.DeepClone());
                 if (method == "host.configureLogin") { LoginEnabled = parameters["enabled"]!.GetValue<bool>(); LoginSaves++; }
                 if (method == "addons.settings")
                 {

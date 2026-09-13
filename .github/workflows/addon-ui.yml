@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: 422415/mpv-AnimeJaNai
-          ref: 296b3979cf45f1a0bcf0ea2060901118a83c68ba
+          ref: 6addb9652a8bcd3c29ba7a8aa5fa3c7307c6fd4c
           path: host-source
       - name: Prepare the matching packaged host
         shell: pwsh
@@ -37,6 +37,7 @@ jobs:
           Copy-Item -LiteralPath ./host-bundle/runtime -Destination ./integration-root/addon-host/runtime -Recurse
           Copy-Item -LiteralPath ./host-bundle/counter.ajnaddon -Destination ./integration-root/addon-development
           Copy-Item -LiteralPath ./host-bundle/service-inspector.ajnaddon -Destination ./integration-root/addon-development
+          Copy-Item ./host-bundle/*.html -Destination ./integration-root/addon-development
       - name: Verify Manager with the packaged host and real Wasm addon
         shell: pwsh
         run: dotnet run --project ./tests/AddonUi/AddonUi.csproj -c Release '-p:UsedAvaloniaProducts=' -- ./addon-integration-results ./integration-root

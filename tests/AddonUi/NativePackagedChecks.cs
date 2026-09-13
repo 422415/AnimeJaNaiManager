@@ -50,7 +50,8 @@ internal static class NativePackagedChecks
             Find<TextBlock>("ActionResult").Text = "";
             Find<StackPanel>("ActionFields").Children.OfType<Button>().Single(b => b.Content as string == label).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Until(() => Find<Button>("SaveButton").IsEnabled && !string.IsNullOrWhiteSpace(Find<TextBlock>("ActionResult").Text));
-            var result = JsonNode.Parse(Find<TextBlock>("ActionResult").Text!);
+            string rendered = Find<TextBlock>("ActionResult").Text!;
+            var result = rendered.StartsWith('[') || rendered.StartsWith('{') ? JsonNode.Parse(rendered) : JsonValue.Create(rendered);
             if (result is JsonObject o && o["error"] is not null) throw new Exception("Packaged session action failed: " + result);
             return result;
         }
@@ -82,7 +83,9 @@ internal static class NativePackagedChecks
         if (((JsonArray)remaining!["sources"]!).Count != 0 || ((JsonArray)remaining["profiles"]!).Count != 1)
             throw new Exception("Native revocation did not preserve exactly the unrelated profile.");
         if (Directory.EnumerateDirectories(Path.Combine(data, "media-workers")).Any()) throw new Exception("Revoking native access left session resources behind.");
-        Click("RemoveButton"); await Until(() => Find<Button>("InstallButton").IsEnabled && Find<TextBlock>("AddonTitle").Text == "No addons installed");
+        Click("RemoveButton"); await Until(() => window.OwnedWindows.Count > 0);
+        window.OwnedWindows.Single().GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Remove addon").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        await Until(() => Find<Button>("InstallButton").IsEnabled && Find<TextBlock>("AddonTitle").Text == "No addons installed");
         File.WriteAllText(Path.Combine(output, "native-results.json"), new JsonObject
         {
             ["passed"] = true, ["evidence"] = evidence,

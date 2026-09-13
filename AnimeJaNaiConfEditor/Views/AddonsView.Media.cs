@@ -29,7 +29,7 @@ public partial class AddonsView
         Control<Button>("ApproveProfileButton").IsVisible = available;
         Control<TextBlock>("MediaNotice").Text = available
             ? "Only the files and saved profile snapshots listed here are available to this addon version. Removing access stops the addon and its sessions."
-            : "This host does not include native processing sessions. No media access has been granted.";
+            : "This AJN build does not include addon video processing. Use the complete addon preview for this feature.";
         if (!available) return;
         var selected = (JsonObject)(await CallAsync("media.selections", new() { ["id"] = id }))!;
         string hash = selectedHash!;
@@ -45,7 +45,7 @@ public partial class AddonsView
                 revoke.Click += async (_, _) => await RunAsync(async () =>
                 {
                     await CallAsync("media.revoke", new() { ["id"] = id, ["expectedHash"] = hash, ["kind"] = kind, ["selectionId"] = selectionId });
-                    await RefreshListAsync();
+                    await RefreshSelectedStatusAsync(); await RefreshMediaAsync();
                 });
                 row.Children.Add(revoke); fields.Children.Add(row);
             }
@@ -112,10 +112,11 @@ public partial class AddonsView
 
     private static Task<bool> ConsentAsync(Window owner, StackPanel content, string approveText)
     {
-        var dialog = new Window { Title = approveText, Width = 600, SizeToContent = SizeToContent.Height, CanResize = false,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = content };
+        var dialog = new Window { Title = approveText, Width = 600, MaxHeight = 640, SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner, Content = new ScrollViewer { Content = content,
+                HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled } };
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
-        var cancel = new Button { Content = "Cancel" }; cancel.Click += (_, _) => dialog.Close(false);
+        var cancel = new Button { Content = "Cancel", IsCancel = true }; cancel.Click += (_, _) => dialog.Close(false);
         var approve = new Button { Content = approveText }; approve.Click += (_, _) => dialog.Close(true);
         buttons.Children.Add(cancel); buttons.Children.Add(approve); content.Children.Add(buttons);
         return dialog.ShowDialog<bool>(owner);
