@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <Folder Include="Models\" />
+    <InternalsVisibleTo Include="AnimeJaNai.AddonUi.Tests" />
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
 

@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:AnimeJaNaiConfEditor.ViewModels"
         xmlns:local="using:AnimeJaNaiConfEditor"
+        xmlns:views="using:AnimeJaNaiConfEditor.Views"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:hypertext="clr-namespace:HyperText.Avalonia.Controls;assembly=HyperText.Avalonia"
@@ -755,6 +756,9 @@
         <TextBlock Text="{Binding ComponentManager.StatusLine}" TextWrapping="Wrap" Opacity="0.7"/>
       </StackPanel>
     </ScrollViewer>
+  </TabItem>
+  <TabItem Header="Addons">
+    <views:AddonsView x:Name="AddonPanel"/>
   </TabItem>
   </TabControl>
 </Window>
