@@ -10,7 +10,6 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -71,45 +70,13 @@ public partial class AddonsView : UserControl
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("The addon preview currently supports Windows.");
         if (client?.IsConnected == true) { await RefreshListAsync(); return; }
         if (client is not null) await client.DisposeAsync();
-        try { client = await ManagementClient.ConnectAsync(DataDirectory, lifetime.Token); }
-        catch (Exception error) when (error is TimeoutException or IOException)
-        {
-            if (!File.Exists(HostPath) || !File.Exists(RuntimePath))
-                throw new IOException("This build does not include the addon host. Use the addon preview package to enable this tab.");
-            Control<TextBlock>("Status").Text = "Starting addon host…";
-            var info = new ProcessStartInfo(HostPath)
-            {
-                UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Path.GetDirectoryName(HostPath)!,
-                RedirectStandardOutput = true, RedirectStandardError = true,
-            };
-            foreach (string argument in new[] { "serve", DataDirectory, RuntimePath }) info.ArgumentList.Add(argument);
-            if (File.Exists(Path.Combine(MainWindowViewModel.RootDir, "addon-host", "native-media.json")))
-                info.ArgumentList.Add(MainWindowViewModel.RootDir);
-            using var started = Process.Start(info) ?? throw new IOException("Could not start the addon host.");
-            _ = DrainAsync(started.StandardOutput);
-            _ = DrainAsync(started.StandardError);
-            var timer = Stopwatch.StartNew();
-            while (true)
-            {
-                lifetime.Token.ThrowIfCancellationRequested();
-                try { client = await ManagementClient.ConnectAsync(DataDirectory, lifetime.Token); break; }
-                catch (Exception retry) when (retry is TimeoutException or IOException)
-                {
-                    if (timer.Elapsed > TimeSpan.FromSeconds(20) || started.HasExited)
-                        throw new IOException("The addon host did not become available. Check that its runtime files are complete.", retry);
-                    await Task.Delay(150, lifetime.Token);
-                }
-            }
-        }
+        Control<TextBlock>("Status").Text = "Connecting addon host…";
+        client = await ManagementClient.ConnectOrStartAsync(DataDirectory, HostPath, RuntimePath,
+            File.Exists(Path.Combine(MainWindowViewModel.RootDir, "addon-host", "native-media.json")) ? MainWindowViewModel.RootDir : null,
+            cancellationToken: lifetime.Token);
         refreshTimer.Start();
         await RefreshListAsync();
         Control<TextBlock>("Status").Text = "Connected. Addon storage and settings are kept separately from player profiles.";
-    }
-
-    private static async Task DrainAsync(StreamReader reader)
-    {
-        try { char[] buffer = new char[1024]; while (await reader.ReadAsync(buffer) != 0) { } }
-        catch (Exception error) when (error is IOException or ObjectDisposedException) { }
     }
 
     private async Task<JsonNode?> CallAsync(string method, JsonObject? parameters = null) =>
@@ -237,6 +204,8 @@ public partial class AddonsView : UserControl
         foreach (string name in new[] { "InstallButton", "RefreshButton" }) Control<Button>(name).IsEnabled = connected && !busy;
         Control<Button>("HostSettingsButton").IsVisible = connected && client?.ServerInfo["hostSettingsAvailable"]?.GetValue<bool>() == true;
         Control<Button>("HostSettingsButton").IsEnabled = connected && !busy;
+        Control<Button>("LoginSettingsButton").IsVisible = connected && client?.ServerInfo["loginSettingsAvailable"]?.GetValue<bool>() == true;
+        Control<Button>("LoginSettingsButton").IsEnabled = connected && !busy;
         foreach (string name in new[] { "StartButton", "StopButton", "RollbackButton", "RemoveButton", "SaveButton" })
             Control<Button>(name).IsEnabled = connected && !busy && SelectedId is not null && (name != "StartButton" || Control<Button>(name).Tag is true);
         Control<ListBox>("AddonList").IsEnabled = !busy;
