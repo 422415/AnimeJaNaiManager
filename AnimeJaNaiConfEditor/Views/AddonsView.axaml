@@ -10,6 +10,7 @@
         <Button x:Name="ConnectButton" Content="Connect host" Click="ConnectClick"/>
         <Button x:Name="InstallButton" Content="Install local addon" Click="InstallClick" IsEnabled="False"/>
         <Button x:Name="RefreshButton" Content="Refresh" Click="RefreshClick" IsEnabled="False"/>
+        <Button x:Name="HostSettingsButton" Content="Host settings" Click="HostSettingsClick" IsVisible="False" IsEnabled="False"/>
       </StackPanel>
     </StackPanel>
     <TextBlock x:Name="Status" Grid.Row="1" Grid.ColumnSpan="2" Text="Connect to the addon host to get started." TextWrapping="Wrap"/>

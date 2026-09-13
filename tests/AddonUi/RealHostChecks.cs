@@ -33,6 +33,7 @@ internal static class RealHostChecks
         try
         {
             Click("ConnectButton"); await Until(() => Find<Button>("InstallButton").IsEnabled);
+            await HostSettingsPackagedChecks.RunAsync(view, window, output);
             string hostPath = Path.Combine(root, "addon-host", "ajn-addon.exe");
             host = Process.GetProcessesByName("ajn-addon").Single(p => string.Equals(p.MainModule?.FileName, hostPath, StringComparison.OrdinalIgnoreCase));
             _ = host.SafeHandle; // Retain a process handle so ExitCode remains available after idle exit.

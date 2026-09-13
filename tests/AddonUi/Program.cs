@@ -39,6 +39,7 @@ await session.Dispatch<bool>(async () =>
     await Until(() => Find<Button>("InstallButton").IsEnabled);
     Check(Find<TextBlock>("AddonTitle").Text == "Sample addon", "Addon was not loaded");
     Check(Find<StackPanel>("SettingFields").Children.Count == 4, "Missing typed settings controls");
+    await HostSettingsUiChecks.RunAsync(view, window, server!, output);
     await Task.Delay(100);
     using (var frame = window.CaptureRenderedFrame()) frame!.Save(Path.Combine(output, "addon-manager.png"));
     var fields = Find<StackPanel>("SettingFields").Children.OfType<StackPanel>().ToArray();
@@ -151,6 +152,8 @@ internal sealed class FixtureServer : IAsyncDisposable
     public bool Running;
     public string[] Granted = [];
     public JsonArray ReviewPermissions = new("storage.read", "storage.write");
+    public int HostCapacity = 2, HostSaves;
+    public bool HostEditable = true;
     public string? ReviewHash;
     public string[] InvalidSettings = [];
     public JsonArray Sources = [], Profiles = [];
@@ -174,7 +177,8 @@ internal sealed class FixtureServer : IAsyncDisposable
                 var parameters = (JsonObject)request["params"]!;
                 JsonNode? result = method switch
                 {
-                    "manager.hello" => new JsonObject { ["major"] = 1, ["nativeMediaAvailable"] = true, ["networkAvailable"] = true, ["credentialsAvailable"] = true },
+                    "manager.hello" => new JsonObject { ["major"] = 1, ["nativeMediaAvailable"] = true, ["networkAvailable"] = true, ["credentialsAvailable"] = true, ["hostSettingsAvailable"] = true },
+                    "host.settings" => new JsonObject { ["maximumConcurrentSessions"] = HostCapacity, ["minimum"] = 1, ["maximum"] = 16, ["editable"] = HostEditable },
                     "addons.list" => new JsonObject { ["addons"] = new JsonArray(new JsonObject { ["id"] = "org.example.ui", ["name"] = "Sample addon", ["version"] = "0.1.0", ["running"] = Running, ["manual"] = true, ["hash"] = new string('a', 64), ["mediaPermission"] = true, ["networkPermission"] = true, ["credentialPermission"] = true, ["outputPermission"] = true }), ["nextCursor"] = null },
                     "addons.settings" => JsonNode.Parse("""{"definitions":{"enabled":{"type":"boolean","label":"Enabled"},"rate":{"type":"number","label":"Sample rate","description":"A sample numeric setting."},"mode":{"type":"choice","label":"Mode","choices":["normal","quiet"]},"name":{"type":"string","label":"Greeting","maxLength":100}},"actions":{"check":{"label":"Check status","description":"Run an addon action."}}} """),
                     "addons.logs" => new JsonArray("Sample addon connected.", "Settings and messages are isolated from player profiles."),
@@ -185,6 +189,7 @@ internal sealed class FixtureServer : IAsyncDisposable
                     "network.inspectDestination" => new JsonObject { ["origin"] = parameters["origin"]!.DeepClone(), ["protocol"] = "http", ["addresses"] = new JsonArray("127.0.0.1"), ["reviewId"] = "review-one" },
                     _ => null,
                 };
+                if (method == "host.configure") { HostCapacity = parameters["maximumConcurrentSessions"]!.GetValue<int>(); HostSaves++; }
                 if (method == "addons.settings")
                 {
                     result!["values"] = Values.DeepClone();

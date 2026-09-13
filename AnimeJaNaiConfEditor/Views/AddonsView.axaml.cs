@@ -235,6 +235,8 @@ public partial class AddonsView : UserControl
         bool connected = client?.IsConnected == true;
         Control<Button>("ConnectButton").IsEnabled = !busy;
         foreach (string name in new[] { "InstallButton", "RefreshButton" }) Control<Button>(name).IsEnabled = connected && !busy;
+        Control<Button>("HostSettingsButton").IsVisible = connected && client?.ServerInfo["hostSettingsAvailable"]?.GetValue<bool>() == true;
+        Control<Button>("HostSettingsButton").IsEnabled = connected && !busy;
         foreach (string name in new[] { "StartButton", "StopButton", "RollbackButton", "RemoveButton", "SaveButton" })
             Control<Button>(name).IsEnabled = connected && !busy && SelectedId is not null && (name != "StartButton" || Control<Button>(name).Tag is true);
         Control<ListBox>("AddonList").IsEnabled = !busy;
