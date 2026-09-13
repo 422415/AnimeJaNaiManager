@@ -68,6 +68,8 @@ internal static class RealHostChecks
             await Task.Delay(100);
             using (var frame = window.CaptureRenderedFrame()) frame!.Save(Path.Combine(output, "addon-real-host.png"));
             Click("RemoveButton"); await Until(() => Find<Button>("InstallButton").IsEnabled && Find<TextBlock>("AddonTitle").Text == "No addons installed");
+            if (File.Exists(Path.Combine(root, "addon-host", "native-media.json")))
+                await NativePackagedChecks.RunAsync(view, window, root, output);
             await view.CloseAsync(); window.Close();
             Check(await Task.Run(() => host.WaitForExit(45000)), "Idle host did not exit");
             Check(host.ExitCode == 0, "Idle host exited with an error");
@@ -83,6 +85,7 @@ internal static class RealHostChecks
             {
                 await using var cleanup = await ManagementClient.ConnectAsync(data);
                 await cleanup.CallAsync("addons.remove", new() { ["id"] = "org.animejanai.counter" });
+                await cleanup.CallAsync("addons.remove", new() { ["id"] = "org.animejanai.session-controller" });
             }
             await view.CloseAsync(); window.Close(); host?.Dispose();
         }
