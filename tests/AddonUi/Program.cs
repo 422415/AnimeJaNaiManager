@@ -76,6 +76,18 @@ await session.Dispatch<bool>(async () =>
     Check(server.Granted.SequenceEqual(new[] { "storage.read" }), "Approval did not match selected permissions");
     Check(server.ReviewHash == new string('a', 64), "Install approval was not bound to the reviewed hash");
 
+    server.ReviewPermissions = new JsonArray("sessions.manage", "media.output", "network.connect");
+    review = view.ReviewPackageAsync("output-fixture.ajnaddon", window);
+    await Until(() => window.OwnedWindows.Count > 0);
+    dialog = window.OwnedWindows.Single();
+    var outputPermissions = dialog.GetVisualDescendants().OfType<CheckBox>().ToArray();
+    Check(outputPermissions.Length == 3 && outputPermissions.All(p => p.IsChecked == false), "Output permissions must also start unchecked");
+    Check(outputPermissions.Any(p => p.Content as string == "Send processed video and audio to services you separately approve"), "Output consent needs its own clear label");
+    using (var frame = dialog.CaptureRenderedFrame()) frame!.Save(Path.Combine(output, "addon-output-permissions.png"));
+    dialog.GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Cancel").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+    await review;
+    Check(server.Granted.SequenceEqual(new[] { "storage.read" }), "Cancelling output review changed the permission grant");
+
     Check(Find<StackPanel>("MediaSection").IsVisible, "Approved session permission did not expose media controls");
     string selectedPath = Path.Combine(output, "chosen video.mp4");
     var sourceReview = view.ApproveSourceAsync(window, "org.example.ui", new string('a', 64), selectedPath);
@@ -107,7 +119,7 @@ await session.Dispatch<bool>(async () =>
     Check(server.Profiles.Count == 1 && !server.Running, "Revocation changed an unrelated selection or left the addon running");
     await NetworkUiChecks.RunAsync(view, window, server, output);
     await view.CloseAsync(); window.Close();
-    File.WriteAllText(Path.Combine(output, "results.json"), "{\"passed\":true,\"checks\":[\"typed settings\",\"save and reload\",\"incompatible setting repair\",\"action\",\"start/stop\",\"permissions default denied\",\"exact selected grant\",\"review hash\",\"media consent cancellation\",\"exact file and package consent\",\"saved profile snapshot\",\"media access revocation\",\"destination consent cancellation\",\"reviewed destination and package\",\"masked credential consent\",\"credential removal preserves destination\",\"destination removal preserves media\"]}");
+    File.WriteAllText(Path.Combine(output, "results.json"), "{\"passed\":true,\"checks\":[\"typed settings\",\"save and reload\",\"incompatible setting repair\",\"action\",\"start/stop\",\"permissions default denied\",\"exact selected grant\",\"review hash\",\"media consent cancellation\",\"exact file and package consent\",\"saved profile snapshot\",\"media access revocation\",\"destination consent cancellation\",\"reviewed destination and package\",\"masked credential consent\",\"credential removal preserves destination\",\"destination removal preserves media\",\"output permissions default denied\",\"output permission review cancellation\",\"media output destination disclosure\"]}");
     return true;
 }, CancellationToken.None);
 }
@@ -138,6 +150,7 @@ internal sealed class FixtureServer : IAsyncDisposable
     private readonly Task serving;
     public bool Running;
     public string[] Granted = [];
+    public JsonArray ReviewPermissions = new("storage.read", "storage.write");
     public string? ReviewHash;
     public string[] InvalidSettings = [];
     public JsonArray Sources = [], Profiles = [];
@@ -162,11 +175,11 @@ internal sealed class FixtureServer : IAsyncDisposable
                 JsonNode? result = method switch
                 {
                     "manager.hello" => new JsonObject { ["major"] = 1, ["nativeMediaAvailable"] = true, ["networkAvailable"] = true, ["credentialsAvailable"] = true },
-                    "addons.list" => new JsonObject { ["addons"] = new JsonArray(new JsonObject { ["id"] = "org.example.ui", ["name"] = "Sample addon", ["version"] = "0.1.0", ["running"] = Running, ["manual"] = true, ["hash"] = new string('a', 64), ["mediaPermission"] = true, ["networkPermission"] = true, ["credentialPermission"] = true }), ["nextCursor"] = null },
+                    "addons.list" => new JsonObject { ["addons"] = new JsonArray(new JsonObject { ["id"] = "org.example.ui", ["name"] = "Sample addon", ["version"] = "0.1.0", ["running"] = Running, ["manual"] = true, ["hash"] = new string('a', 64), ["mediaPermission"] = true, ["networkPermission"] = true, ["credentialPermission"] = true, ["outputPermission"] = true }), ["nextCursor"] = null },
                     "addons.settings" => JsonNode.Parse("""{"definitions":{"enabled":{"type":"boolean","label":"Enabled"},"rate":{"type":"number","label":"Sample rate","description":"A sample numeric setting."},"mode":{"type":"choice","label":"Mode","choices":["normal","quiet"]},"name":{"type":"string","label":"Greeting","maxLength":100}},"actions":{"check":{"label":"Check status","description":"Run an addon action."}}} """),
                     "addons.logs" => new JsonArray("Sample addon connected.", "Settings and messages are isolated from player profiles."),
                     "addons.action" => new JsonObject { ["status"] = "action received" },
-                    "addons.inspect" => new JsonObject { ["manifest"] = new JsonObject { ["id"] = "org.example.ui", ["name"] = "Sample addon", ["version"] = "0.1.0", ["permissions"] = new JsonArray("storage.read", "storage.write") }, ["hash"] = new string('a', 64) },
+                    "addons.inspect" => new JsonObject { ["manifest"] = new JsonObject { ["id"] = "org.example.ui", ["name"] = "Sample addon", ["version"] = "0.1.0", ["permissions"] = ReviewPermissions.DeepClone() }, ["hash"] = new string('a', 64) },
                     "media.selections" => new JsonObject { ["sources"] = Sources.DeepClone(), ["profiles"] = Profiles.DeepClone() },
                     "network.selections" => new JsonObject { ["destinations"] = Destinations.DeepClone() },
                     "network.inspectDestination" => new JsonObject { ["origin"] = parameters["origin"]!.DeepClone(), ["protocol"] = "http", ["addresses"] = new JsonArray("127.0.0.1"), ["reviewId"] = "review-one" },

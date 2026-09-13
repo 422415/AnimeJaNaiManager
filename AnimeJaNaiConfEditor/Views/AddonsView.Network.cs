@@ -13,7 +13,7 @@ namespace AnimeJaNaiConfEditor.Views;
 
 public partial class AddonsView
 {
-    private bool networkPermission, credentialPermission;
+    private bool networkPermission, credentialPermission, outputPermission;
 
     private async Task RefreshNetworkAsync()
     {
@@ -95,7 +95,10 @@ public partial class AddonsView
         string protocol = reviewed["protocol"]!.GetValue<string>();
         content.Children.Add(new TextBlock { Text = protocol == "udp"
             ? "This addon can send datagrams to this device and port. This does not grant listening or discovery."
-            : "This addon can send HTTP requests and read responses at all paths on this service. Redirects do not grant access to another service.", TextWrapping = TextWrapping.Wrap });
+            : "This addon can read responses and make changes through HTTP requests at all paths on this service. Redirects do not grant access to another service.", TextWrapping = TextWrapping.Wrap });
+        if (outputPermission && protocol is "http" or "https") content.Children.Add(new TextBlock {
+            Text = "This addon also has permission to send processed video and audio from the media files you approve to this service.",
+            TextWrapping = TextWrapping.Wrap, FontWeight = FontWeight.SemiBold });
         if (protocol == "http") content.Children.Add(new TextBlock { Text = "HTTP traffic is unencrypted.", TextWrapping = TextWrapping.Wrap });
         content.Children.Add(new TextBlock { Text = "Approved addresses: " + string.Join(", ", ((JsonArray)reviewed["addresses"]!).Select(a => a!.GetValue<string>())), TextWrapping = TextWrapping.Wrap });
         content.Children.Add(new TextBlock { Text = "These addresses remain fixed to this approval. Review the address again if the service moves. You can remove access from the addon page.", TextWrapping = TextWrapping.Wrap });
