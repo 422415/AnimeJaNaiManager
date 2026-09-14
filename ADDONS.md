@@ -1,8 +1,8 @@
 # Addon Manager developer preview
 
-The Addons tab connects to the companion host in `mpv-AnimeJaNai/addons` on branch `feature/addon-foundation`. This Manager branch is `feature/addon-manager`, based on the 3.6.1 stability fixes. It does not change the existing player configuration format.
+Opening Addons automatically starts or connects to the local companion service in `mpv-AnimeJaNai/addons`. The coordinated branches are named `integration/addons` and build on current upstream. End users do not configure a host address or connection.
 
-Put the self-contained host at `<AJN root>/addon-host/ajn-addon.exe` and its verified runtime at `<AJN root>/addon-host/runtime/wasmtime.exe`. Open Addons and choose Connect host. The host starts on demand without a console. Development tests can set `ANIMEJANAI_ROOT` and `ANIMEJANAI_DATA_DIR` to separate writable folders; data then lives under `<data directory>/addons`.
+The assembler puts the host at `<AJN root>/addon-host/ajn-addon.exe`, the launcher beside it, and pinned Wasmtime at `addon-host/runtime/wasmtime.exe`. The service starts on demand without a console. Development tests can set `ANIMEJANAI_ROOT` and `ANIMEJANAI_DATA_DIR`; data lives under `<data directory>/addons`.
 
 Choose Install local addon and select an `.ajnaddon` package. Review its identity and check only the permissions you want to grant. All checkboxes start unchecked. Installation is bound to the reviewed archive's hash. Local development packages do not establish publisher identity; website/catalog installation is later work.
 
@@ -10,7 +10,11 @@ The page provides status, start/stop, previous-version rollback, removal, typed 
 
 Addon labels/descriptions/settings are rendered with trusted native controls. Addon HTML, assemblies or external configuration executables are never loaded. The management protocol is separate from the restricted guest broker. `Services/AddonHostClient.cs` is a verbatim copy of the host's `sdk/csharp/ManagementClient.cs`.
 
-This preview does not yet connect native media sessions, GPU frame samples, encoded output, network devices or credentials. It is not a Plex or bias-light addon.
+The preview includes approved native media sessions, DirectML/D3D11 processed SDR samples, normal-player samples, encoded output, network destinations and optional credentials when the installed runtime advertises those capabilities. NVENC also requires supported NVIDIA hardware. CUDA/TensorRT samples, HDR, final display composition, website/catalog installation and the example Plex/bias-light applications remain separate work. Windows is implemented first; Linux assembly excludes this runtime.
+
+Updates block activation and drain workers before replacement. Interrupted updates keep a recovery journal and pause addons; close the player and Manager and run the installer again to recover. Remove addon preserves private data. Full uninstall follows the existing app-tree deletion policy and preserves external data roots and login entries now owned by another installation.
+
+`addon-sdk-source.json` pins the canonical management client and checksum. Run `./tools/check-addon-client.ps1` before publishing; CI compares the copied client with that exact source before packaged-host checks.
 
 ## Verify the controls
 

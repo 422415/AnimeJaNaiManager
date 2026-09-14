@@ -2,7 +2,7 @@ name: Addon Manager UI
 
 on:
   push:
-    branches: [feature/addon-manager]
+    branches: [main, integration/addons, feature/addon-manager]
   pull_request:
     paths: ['AnimeJaNaiConfEditor/**', 'tests/AddonUi/**', '.github/workflows/addon-ui.yml']
   workflow_dispatch:
@@ -25,11 +25,12 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: 422415/mpv-AnimeJaNai
-          ref: 6addb9652a8bcd3c29ba7a8aa5fa3c7307c6fd4c
+          ref: aa49f9a87a13b425b9dc363b6c700df52cc8263d
           path: host-source
       - name: Prepare the matching packaged host
         shell: pwsh
         run: |
+          ./tools/check-addon-client.ps1 -CanonicalSourcePath ./host-source/addons/sdk/csharp/ManagementClient.cs
           ./host-source/addons/tools/bootstrap.ps1
           ./host-source/addons/tools/package.ps1 -OutputDirectory ./host-bundle
           New-Item -ItemType Directory -Path integration-root/addon-development -Force | Out-Null
