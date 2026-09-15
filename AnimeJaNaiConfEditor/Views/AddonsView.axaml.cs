@@ -341,7 +341,7 @@ public partial class AddonsView : UserControl
                 "frames.read" => "Read small image samples within the media access you grant",
                 "player.observe" => "Read small image samples from videos played in AJN",
                 "network.connect" => "Exchange data with services and devices you approve",
-                "network.listen" => "Accept connections on local listener ports you approve",
+                "network.listen" => "Accept client connections on addresses and ports you approve",
                 "network.proxy" => "Forward HTTP and WebSocket traffic to services you approve",
                 "credentials.delegate" => "Use each client's credentials with the upstream service you approve",
                 "credentials.use" => "Use saved credentials for services you approve",
