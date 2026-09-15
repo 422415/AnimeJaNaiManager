@@ -160,6 +160,7 @@ await session.Dispatch<bool>(async () =>
     Check(mediaDraft.Text == "Pending media setup" && Find<StackPanel>("SettingFields").GetVisualDescendants().Contains(mediaDraft), "Removing media access lost unsaved settings");
     mediaDraft.Text = beforeMedia;
     await NetworkUiChecks.RunAsync(view, window, server, output);
+    await ListenerUiChecks.RunAsync(view, window, server, output);
     await UsabilityUiChecks.RunAsync(view, window, server, output);
     await view.CloseAsync(); window.Close();
     await UsabilityUiChecks.MissingRuntimeAsync(output);
@@ -208,6 +209,10 @@ internal sealed class FixtureServer : IAsyncDisposable
     public JsonArray Sources = [], Profiles = [];
     public string? MediaReviewHash, ProfileConfiguration;
     public JsonArray Destinations = [];
+    public bool ListenerPermission;
+    public JsonArray Listeners = [];
+    public JsonObject? ListenerBinding;
+    public string? ListenerReviewHash;
     public string? NetworkReviewHash, NetworkReviewId, CredentialValue;
     public JsonObject Values = new() { ["enabled"] = true, ["rate"] = 20.0, ["mode"] = "normal", ["name"] = "Hello" };
     public FixtureServer(string directory) { serving = Task.Run(() => ServeAsync(directory)); }
@@ -236,7 +241,7 @@ internal sealed class FixtureServer : IAsyncDisposable
                 }
                 JsonNode? result = method switch
                 {
-                    "manager.hello" => new JsonObject { ["major"] = 1, ["nativeMediaAvailable"] = true, ["networkAvailable"] = true, ["credentialsAvailable"] = true, ["hostSettingsAvailable"] = true, ["loginSettingsAvailable"] = true },
+                    "manager.hello" => new JsonObject { ["major"] = 1, ["nativeMediaAvailable"] = true, ["networkAvailable"] = true, ["httpServerAvailable"] = true, ["listenerTlsAvailable"] = true, ["listenerNetworkAvailable"] = true, ["credentialsAvailable"] = true, ["hostSettingsAvailable"] = true, ["loginSettingsAvailable"] = true },
                     "host.settings" => new JsonObject { ["maximumConcurrentSessions"] = HostCapacity, ["minimum"] = 1, ["maximum"] = 16, ["editable"] = HostEditable },
                     "host.login" => new JsonObject { ["enabled"] = LoginEnabled, ["available"] = LoginAvailable, ["registeredElsewhere"] = false },
                     "addons.list" => new JsonObject { ["addons"] = new JsonArray(new JsonObject { ["id"] = "org.example.ui", ["name"] = "Sample addon", ["version"] = "0.1.0", ["running"] = Running, ["manual"] = true, ["hash"] = new string('a', 64), ["mediaPermission"] = true, ["networkPermission"] = true, ["credentialPermission"] = true, ["outputPermission"] = true, ["inputPermission"] = true }), ["nextCursor"] = null },
@@ -250,6 +255,22 @@ internal sealed class FixtureServer : IAsyncDisposable
                     _ => null,
                 };
                 if (method == "host.configure") { HostCapacity = parameters["maximumConcurrentSessions"]!.GetValue<int>(); HostSaves++; }
+                if (method == "addons.list") result!["addons"]![0]!["listenerPermission"] = ListenerPermission;
+                if (method == "listeners.selections") result = new JsonObject { ["listeners"] = Listeners.DeepClone() };
+                if (method == "listeners.certificates") result = new JsonObject { ["certificates"] = new JsonArray() };
+                if (method == "listeners.inspect")
+                {
+                    ListenerBinding = new JsonObject { ["address"] = parameters["address"]!.DeepClone(), ["port"] = parameters["port"]!.DeepClone(), ["sensitiveHeaders"] = parameters["sensitiveHeaders"]!.DeepClone(), ["sensitiveQuery"] = parameters["sensitiveQuery"]!.DeepClone() };
+                    foreach (string key in new[] { "scheme", "scope", "allowedHosts", "publicBaseUrl", "certificateId", "certificateHost", "cors" })
+                        if (parameters.ContainsKey(key)) ListenerBinding[key] = parameters[key]?.DeepClone();
+                    result = new JsonObject { ["reviewId"] = "listener-review", ["binding"] = ListenerBinding.DeepClone() };
+                }
+                if (method == "listeners.approve")
+                {
+                    ListenerReviewHash = parameters["expectedHash"]!.GetValue<string>();
+                    Listeners.Add(new JsonObject { ["id"] = "listener-one", ["name"] = parameters["name"]!.DeepClone(), ["binding"] = ListenerBinding!.DeepClone() });
+                }
+                if (method == "listeners.revoke") { Listeners.Clear(); Running = false; }
                 if (method == "addons.list" && ExtraAddon is not null) ((JsonArray)result!["addons"]!).Add(ExtraAddon.DeepClone());
                 if (method == "host.configureLogin") { LoginEnabled = parameters["enabled"]!.GetValue<bool>(); LoginSaves++; }
                 if (method == "addons.settings")

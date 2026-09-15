@@ -8,6 +8,22 @@ Choose Install local addon and select an `.ajnaddon` package. Review its identit
 
 The page provides status, start/stop, previous-version rollback, removal, typed settings, declared actions and recent logs. Settings are validated by the host. Incompatible saved fields show a repair notice and defaults for review; reading the form does not overwrite them. Remove stops the addon but preserves its data. Manual starts persist after Manager closes; activation that belongs only to Manager ends when its last relevant connection closes.
 
+API 1.7 adds **Listening access** for addons that request `network.listen`.
+Start with local access unless the addon needs another device to connect.
+LAN/public access requires a separate reviewed binding, port and accepted host
+names. HTTPS certificates are imported into the host with a hostname/expiry
+check; their private keys are not sent to the addon. Import a replacement
+certificate, choose it for the listener and restart the addon when rotating
+certificates. Removing access stops the addon before removing its approval.
+An entered public URL is shown as unverified: Manager does not configure the
+router, firewall, DNS or internet reachability.
+
+Listener access, upstream service access, proxying and temporary client
+credentials are separate permissions. Approving a listener alone does not
+authorize remote media access or processing. The matching runtime's
+`HTTP-SERVER.md` and `STREAMING.md` describe resource approval and public APIs;
+the full standalone developer guide includes the authoring contracts.
+
 Addon labels/descriptions/settings are rendered with trusted native controls. Addon HTML, assemblies or external configuration executables are never loaded. The management protocol is separate from the restricted guest broker. `Services/AddonHostClient.cs` is a verbatim copy of the host's `sdk/csharp/ManagementClient.cs`.
 
 The preview includes approved native media sessions, DirectML/D3D11 processed SDR samples, normal-player samples, encoded output, network destinations and optional credentials when the installed runtime advertises those capabilities. NVENC also requires supported NVIDIA hardware. CUDA/TensorRT samples, HDR, final display composition, website/catalog installation and the example Plex/bias-light applications remain separate work. Windows is implemented first; Linux assembly excludes this runtime.

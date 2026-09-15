@@ -122,6 +122,7 @@ public partial class AddonsView : UserControl
         Control<TextBlock>("SettingsNotice").IsVisible = false;
         Control<StackPanel>("MediaSection").IsVisible = false;
         Control<StackPanel>("NetworkSection").IsVisible = false;
+        Control<StackPanel>("ListenerSection").IsVisible = false;
         Control<TextBlock>("RuntimeNotice").IsVisible = false;
         Control<TextBlock>("ActionsNotice").IsVisible = false;
         string? id = SelectedId;
@@ -182,6 +183,7 @@ public partial class AddonsView : UserControl
         }
         await RefreshMediaAsync();
         await RefreshNetworkAsync();
+        await RefreshListenersAsync();
     }
 
     private async Task RefreshSelectedStatusAsync()
@@ -194,6 +196,7 @@ public partial class AddonsView : UserControl
         selectedHash = row["hash"]?.GetValue<string>();
         mediaPermission = row["mediaPermission"]?.GetValue<bool>() == true;
         networkPermission = row["networkPermission"]?.GetValue<bool>() == true;
+        listenerPermission = row["listenerPermission"]?.GetValue<bool>() == true;
         credentialPermission = row["credentialPermission"]?.GetValue<bool>() == true;
         outputPermission = row["outputPermission"]?.GetValue<bool>() == true;
         inputPermission = row["inputPermission"]?.GetValue<bool>() == true;
@@ -245,6 +248,7 @@ public partial class AddonsView : UserControl
             : "This addon must be running to use its actions. It starts from its declared player, Manager or Windows startup event.";
         Control<StackPanel>("MediaSection").IsEnabled = connected && !busy;
         Control<StackPanel>("NetworkSection").IsEnabled = connected && !busy;
+        Control<StackPanel>("ListenerSection").IsEnabled = connected && !busy;
     }
 
     private async void RetryClick(object? sender, RoutedEventArgs e) => await RunAsync(async () =>
@@ -337,6 +341,9 @@ public partial class AddonsView : UserControl
                 "frames.read" => "Read small image samples within the media access you grant",
                 "player.observe" => "Read small image samples from videos played in AJN",
                 "network.connect" => "Exchange data with services and devices you approve",
+                "network.listen" => "Accept connections on local listener ports you approve",
+                "network.proxy" => "Forward HTTP and WebSocket traffic to services you approve",
+                "credentials.delegate" => "Use each client's credentials with the upstream service you approve",
                 "credentials.use" => "Use saved credentials for services you approve",
                 "media.output" => "Send processed video and audio to services you separately approve",
                 "media.input" => "Read and process media from services you separately approve",

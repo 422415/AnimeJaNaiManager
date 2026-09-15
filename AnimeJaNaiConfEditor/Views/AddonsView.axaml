@@ -48,6 +48,12 @@
           <Button x:Name="ApproveDestinationButton" Content="Allow a service or device" Click="ApproveDestinationClick" HorizontalAlignment="Left"/>
           <StackPanel x:Name="NetworkFields" Spacing="10"/>
         </StackPanel>
+        <StackPanel x:Name="ListenerSection" IsVisible="False" Spacing="8">
+          <TextBlock Text="Listening access" FontWeight="SemiBold"/>
+          <TextBlock x:Name="ListenerNotice" TextWrapping="Wrap"/>
+          <Button x:Name="ApproveListenerButton" Content="Allow a local listener" Click="ApproveListenerClick" HorizontalAlignment="Left"/>
+          <StackPanel x:Name="ListenerFields" Spacing="10"/>
+        </StackPanel>
         <TextBlock x:Name="SettingsNotice" IsVisible="False" TextWrapping="Wrap"/>
         <StackPanel x:Name="SettingFields" Spacing="12"/>
         <Button x:Name="SaveButton" Content="Save settings" Click="SaveClick" IsVisible="False" HorizontalAlignment="Left"/>

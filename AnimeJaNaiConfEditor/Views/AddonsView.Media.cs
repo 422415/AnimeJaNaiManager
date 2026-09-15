@@ -58,8 +58,8 @@ public partial class AddonsView
         var owner = TopLevel.GetTopLevel(this) as Window ?? throw new IOException("Could not open the media picker.");
         var picked = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Allow this addon to process one local media file", AllowMultiple = false,
-            FileTypeFilter = new[] { new FilePickerFileType("Local video") { Patterns = new[] { "*.mkv", "*.webm", "*.mp4", "*.m4v", "*.mov", "*.avi", "*.ts", "*.mts", "*.m2ts" } } },
+            Title = "Allow this addon to use one local media or subtitle file", AllowMultiple = false,
+            FileTypeFilter = new[] { new FilePickerFileType("Video or subtitles") { Patterns = new[] { "*.mkv", "*.webm", "*.mp4", "*.m4v", "*.mov", "*.avi", "*.ts", "*.mts", "*.m2ts", "*.srt", "*.ass", "*.ssa", "*.vtt" } } },
         });
         string? path = picked.FirstOrDefault()?.TryGetLocalPath(); if (path is null) return;
         await ApproveSourceAsync(owner, id, hash, path);
