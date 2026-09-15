@@ -340,6 +340,7 @@ public partial class AddonsView : UserControl
                 "sessions.manage" => "Process approved media using profiles you separately approve",
                 "frames.read" => "Read small image samples within the media access you grant",
                 "player.observe" => "Read small image samples from videos played in AJN",
+                "player.sceneDetection" => "Analyze video frame pairs and change RIFE scene-cut decisions",
                 "network.connect" => "Exchange data with services and devices you approve",
                 "network.listen" => "Accept client connections on addresses and ports you approve",
                 "network.proxy" => "Forward HTTP and WebSocket traffic to services you approve",
