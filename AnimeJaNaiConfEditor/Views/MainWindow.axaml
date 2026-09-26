@@ -279,7 +279,7 @@
             <TextBlock Margin="10,0,0,10" Classes="help" TextWrapping="Wrap">Subtitle rendering changes take effect after you restart the player.</TextBlock>
 
             <CheckBox Margin="10,10,0,0" IsChecked="{Binding AnimeJaNaiConf.AutoDisplayRefresh}" Content="Automatic Display Refresh Rate (Experimental)" />
-            <TextBlock Margin="10,0,0,10" Classes="help" TextWrapping="Wrap">Windows only. After the video cadence settles, matches the playback display to fixed-rate sections and uses its highest supported refresh rate for variable-rate sections, keeping the current resolution. Your screen may briefly go black during a switch. The original rate is restored when playback ends. Off by default; restart the player after changing this setting.</TextBlock>
+            <TextBlock Margin="10,0,0,10" Classes="help" TextWrapping="Wrap">Windows only. Chooses one refresh rate before playback and keeps it for the whole episode. Local videos are checked first, which may add a few seconds at startup. Fixed-rate videos use a matching rate; mixed-rate or unverified videos use the display's highest supported rate at the current resolution. Your screen may briefly go black during the initial switch. The original rate is restored when playback ends. Off by default; restart the player after changing this setting.</TextBlock>
 
           </StackPanel>
           <StackPanel Orientation="Horizontal" Grid.Row="0" HorizontalAlignment="Right" VerticalAlignment="Top">
