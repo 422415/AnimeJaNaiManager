@@ -735,6 +735,7 @@ chain_2_rife=no";
 
             animeJaNaiConf.EnableLogging = ParseBool(parser.GetValue("global", "logging", "no"));
             animeJaNaiConf.AutoDisplayRefresh = ParseBool(parser.GetValue("global", "display_rate_match", "no"));
+            animeJaNaiConf.CameraCadence = ParseBool(parser.GetValue("global", "camera_cadence", "no"));
             animeJaNaiConf.BackendAutoFallback = ParseBool(parser.GetValue("global", "backend_auto_fallback", "no"));
             if (Enum.TryParse(parser.GetValue("global", "backend", "TensorRT"), out Backend backend))
             {
@@ -1047,6 +1048,10 @@ chain_2_rife=no";
             {
                 parser.SetValue("global", "display_rate_match", "yes");
             }
+            if (conf.CameraCadence)
+            {
+                parser.SetValue("global", "camera_cadence", "yes");
+            }
             // Write-minimal: only persist trt_engine_settings when it differs from the current
             // default, so future default changes apply automatically to users who didn't customize.
             if (conf.TrtEngineSettings != DEFAULT_TRT_ENGINE_SETTINGS)
@@ -1325,7 +1330,8 @@ chain_2_rife=no";
                     x => x.BalancedSharp,
                     x => x.PerformanceSharp,
                     x => x.GpuSubtitles,
-                    x => x.AutoDisplayRefresh).Subscribe(x =>
+                    x => x.AutoDisplayRefresh,
+                    x => x.CameraCadence).Subscribe(x =>
                     {
                         Vm?.WriteAnimeJaNaiConf();
                     });
@@ -1368,6 +1374,7 @@ chain_2_rife=no";
             set
             {
                 this.RaiseAndSetIfChanged(ref _tensorRtSelected, value);
+                this.RaisePropertyChanged(nameof(CameraCadenceActive));
             }
         }
 
@@ -1609,6 +1616,20 @@ chain_2_rife=no";
             get => _autoDisplayRefresh;
             set => this.RaiseAndSetIfChanged(ref _autoDisplayRefresh, value);
         }
+
+        private bool _cameraCadence;
+        [DataMember]
+        public bool CameraCadence
+        {
+            get => _cameraCadence;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _cameraCadence, value);
+                this.RaisePropertyChanged(nameof(CameraCadenceActive));
+            }
+        }
+
+        public bool CameraCadenceActive => CameraCadence && TensorRtSelected;
     }
 
     [DataContract]

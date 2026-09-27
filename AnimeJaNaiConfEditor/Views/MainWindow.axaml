@@ -278,7 +278,12 @@
 
             <TextBlock Margin="10,0,0,10" Classes="help" TextWrapping="Wrap">Subtitle rendering changes take effect after you restart the player.</TextBlock>
 
-            <CheckBox Margin="10,10,0,0" IsChecked="{Binding AnimeJaNaiConf.AutoDisplayRefresh}" Content="Automatic Display Refresh Rate (Experimental)" />
+            <CheckBox Margin="10,10,0,0" IsChecked="{Binding AnimeJaNaiConf.CameraCadence}" IsEnabled="{Binding AnimeJaNaiConf.TensorRtSelected}" Content="GPU Camera Pan Correction (Experimental)" />
+            <TextBlock Margin="10,0,0,5" Classes="help" TextWrapping="Wrap">Reduces uneven camera pans when video and display rates do not match, while keeping the original animation poses. Best tested with 23.976 fps video on a 60 Hz display. Requires NVIDIA/TensorRT; off by default. Experimental: some scenes may show artifacts or retain uneven motion.</TextBlock>
+            <TextBlock Margin="10,0,0,10" Classes="help" TextWrapping="Wrap">Keeps your current display refresh rate and applies the required playback settings. While enabled, F8 switches the correction on/off for comparison without changing your saved preference. Your custom keybindings take priority. Restart the player after changing this setting.</TextBlock>
+
+            <CheckBox Margin="10,10,0,0" IsChecked="{Binding AnimeJaNaiConf.AutoDisplayRefresh}" IsEnabled="{Binding !AnimeJaNaiConf.CameraCadenceActive}" Content="Automatic Display Refresh Rate (Experimental)" />
+            <TextBlock Margin="10,0,0,5" Classes="help" TextWrapping="Wrap" IsVisible="{Binding AnimeJaNaiConf.CameraCadenceActive}">Automatic refresh switching is temporarily suspended by camera pan correction. Your previous selection is remembered for when you turn correction off.</TextBlock>
             <TextBlock Margin="10,0,0,10" Classes="help" TextWrapping="Wrap">Windows only. Chooses one refresh rate before playback and keeps it for the whole episode. Local videos are checked first, which may add a few seconds at startup. Fixed-rate videos use a matching rate; mixed-rate or unverified videos use the display's highest supported rate at the current resolution. Your screen may briefly go black during the initial switch. The original rate is restored when playback ends. Off by default; restart the player after changing this setting.</TextBlock>
 
           </StackPanel>

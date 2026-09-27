@@ -4,6 +4,23 @@ Manager for [mpv-upscale-2x_animejanai](https://github.com/the-database/mpv-upsc
 
 Formerly AnimeJaNaiConfEditor; the executable is `AnimeJaNaiManager.exe` and ships at the install root next to `mpvnet.exe`.
 
+## Experimental GPU camera pan correction
+
+**GPU Camera Pan Correction (Experimental)** is another option in **Profiles**.
+It requires NVIDIA/TensorRT and the companion experimental player package.
+Enable it, restart the player, and keep Windows at the refresh rate you want to
+use (the initial target is 23.976 fps content on a 60 Hz display). It automatically
+applies the required display-sync playback settings, without changing mpv.conf.
+While enabled, **F8** toggles correction for comparison without changing your
+saved preference. Custom F8 bindings take priority; the script registers no F8
+binding when the experiment is disabled. This setting defaults to off and is
+saved as `[global] camera_cadence=yes`; full-config export/import includes it.
+
+Automatic display refresh is temporarily suspended while camera correction is
+enabled. Its saved preference is retained and applies again after disabling
+correction and restarting. The camera option is unavailable under DirectML so
+the experiment cannot force D3D11 frames through Vulkan/CPU transfers.
+
 ## Experimental automatic display refresh
 
 In **Profiles**, enable **Automatic Display Refresh Rate (Experimental)** and

@@ -25,6 +25,33 @@ try
             throw new Exception($"Autosave lost automatic display refresh={enabled}");
         Console.WriteLine($"PASS automatic display refresh={enabled} export/reload and autosave");
     }
+    if (vm.AnimeJaNaiConf.CameraCadence || vm.AnimeJaNaiConf.CameraCadenceActive)
+        throw new Exception("Camera pan correction must default to off");
+    vm.AnimeJaNaiConf.AutoDisplayRefresh = true;
+    vm.AnimeJaNaiConf.UserSelectTensorRt();
+    foreach (bool enabled in new[] { true, false })
+    {
+        vm.AnimeJaNaiConf.CameraCadence = enabled;
+        string full = Path.Combine(data, $"camera-cadence-{enabled}.conf");
+        vm.WriteAnimeJaNaiConf(full);
+        var reloaded = vm.ReadAnimeJaNaiConf(full);
+        var autosaved = vm.ReadAnimeJaNaiConf(Path.Combine(data, "animejanai.conf"));
+        if (reloaded.CameraCadence != enabled || autosaved.CameraCadence != enabled ||
+            reloaded.CameraCadenceActive != enabled || !reloaded.AutoDisplayRefresh ||
+            !autosaved.AutoDisplayRefresh)
+            throw new Exception($"Camera correction={enabled} or previous refresh preference was lost");
+        Console.WriteLine($"PASS camera correction={enabled} export/reload and autosave; refresh preference retained");
+    }
+    vm.AnimeJaNaiConf.CameraCadence = true;
+    vm.AnimeJaNaiConf.UserSelectDirectMl();
+    if (vm.AnimeJaNaiConf.CameraCadenceActive || !vm.AnimeJaNaiConf.CameraCadence)
+        throw new Exception("DirectML must suspend correction without discarding the preference");
+    vm.AnimeJaNaiConf.UserSelectTensorRt();
+    if (!vm.AnimeJaNaiConf.CameraCadenceActive)
+        throw new Exception("Returning to TensorRT lost camera correction");
+    vm.AnimeJaNaiConf.CameraCadence = false;
+    Console.WriteLine("PASS camera correction backend availability");
+
     foreach (bool ensemble in new[] { true, false })
     {
         vm.CurrentSlot.Chains[0].RifeEnsemble = ensemble;
