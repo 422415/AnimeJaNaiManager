@@ -25,32 +25,32 @@ try
             throw new Exception($"Autosave lost automatic display refresh={enabled}");
         Console.WriteLine($"PASS automatic display refresh={enabled} export/reload and autosave");
     }
-    if (vm.AnimeJaNaiConf.CameraCadence || vm.AnimeJaNaiConf.CameraCadenceActive)
-        throw new Exception("Camera pan correction must default to off");
+    if (vm.AnimeJaNaiConf.CameraPanSmoothing || vm.AnimeJaNaiConf.CameraPanSmoothingActive)
+        throw new Exception("Camera pan smoothing must default to off");
     vm.AnimeJaNaiConf.AutoDisplayRefresh = true;
     vm.AnimeJaNaiConf.UserSelectTensorRt();
     foreach (bool enabled in new[] { true, false })
     {
-        vm.AnimeJaNaiConf.CameraCadence = enabled;
-        string full = Path.Combine(data, $"camera-cadence-{enabled}.conf");
+        vm.AnimeJaNaiConf.CameraPanSmoothing = enabled;
+        string full = Path.Combine(data, $"camera-pan-smoothing-{enabled}.conf");
         vm.WriteAnimeJaNaiConf(full);
         var reloaded = vm.ReadAnimeJaNaiConf(full);
         var autosaved = vm.ReadAnimeJaNaiConf(Path.Combine(data, "animejanai.conf"));
-        if (reloaded.CameraCadence != enabled || autosaved.CameraCadence != enabled ||
-            reloaded.CameraCadenceActive != enabled || !reloaded.AutoDisplayRefresh ||
+        if (reloaded.CameraPanSmoothing != enabled || autosaved.CameraPanSmoothing != enabled ||
+            reloaded.CameraPanSmoothingActive != enabled || !reloaded.AutoDisplayRefresh ||
             !autosaved.AutoDisplayRefresh)
-            throw new Exception($"Camera correction={enabled} or previous refresh preference was lost");
-        Console.WriteLine($"PASS camera correction={enabled} export/reload and autosave; refresh preference retained");
+            throw new Exception($"Camera pan smoothing={enabled} or previous refresh preference was lost");
+        Console.WriteLine($"PASS camera pan smoothing={enabled} export/reload and autosave; refresh preference retained");
     }
-    vm.AnimeJaNaiConf.CameraCadence = true;
+    vm.AnimeJaNaiConf.CameraPanSmoothing = true;
     vm.AnimeJaNaiConf.UserSelectDirectMl();
-    if (vm.AnimeJaNaiConf.CameraCadenceActive || !vm.AnimeJaNaiConf.CameraCadence)
+    if (vm.AnimeJaNaiConf.CameraPanSmoothingActive || !vm.AnimeJaNaiConf.CameraPanSmoothing)
         throw new Exception("DirectML must suspend correction without discarding the preference");
     vm.AnimeJaNaiConf.UserSelectTensorRt();
-    if (!vm.AnimeJaNaiConf.CameraCadenceActive)
-        throw new Exception("Returning to TensorRT lost camera correction");
-    vm.AnimeJaNaiConf.CameraCadence = false;
-    Console.WriteLine("PASS camera correction backend availability");
+    if (!vm.AnimeJaNaiConf.CameraPanSmoothingActive)
+        throw new Exception("Returning to TensorRT lost camera pan smoothing");
+    vm.AnimeJaNaiConf.CameraPanSmoothing = false;
+    Console.WriteLine("PASS camera pan smoothing backend availability");
 
     foreach (bool ensemble in new[] { true, false })
     {
