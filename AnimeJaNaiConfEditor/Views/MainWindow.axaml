@@ -278,8 +278,8 @@
 
             <TextBlock Margin="10,0,0,10" Classes="help" TextWrapping="Wrap">Subtitle rendering changes take effect after you restart the player.</TextBlock>
 
-            <CheckBox Margin="10,10,0,0" IsChecked="{Binding AnimeJaNaiConf.CameraPanSmoothing}" IsEnabled="{Binding AnimeJaNaiConf.TensorRtSelected}" Content="47.952 Hz Camera Pan Smoothing (Experimental)" />
-            <TextBlock Margin="10,0,0,5" Classes="help" TextWrapping="Wrap">Smooths camera pans in 23.976 fps anime while preserving the original animation drawings and timing. Set Windows to 47.952 Hz before playback; the target is 8K projector playback. Requires NVIDIA/TensorRT. Leave RIFE off for this test. Off by default; some scenes may retain judder or show artifacts.</TextBlock>
+            <CheckBox Margin="10,10,0,0" IsChecked="{Binding AnimeJaNaiConf.CameraPanSmoothing}" IsEnabled="{Binding AnimeJaNaiConf.TensorRtSelected}" Content="Camera Pan Smoothing (Experimental)" />
+            <TextBlock Margin="10,0,0,5" Classes="help" TextWrapping="Wrap">Smooths camera pans in 23.976 fps anime while preserving the original animation drawings and timing. Uses 47.952 fps pans at 47.952 Hz and automatically selects 30 fps pans at 120 Hz (29.97 at 119.88 Hz). Other supported refresh rates use one camera update per refresh. Requires NVIDIA/TensorRT. Leave RIFE off for this test. Off by default; some scenes may retain judder or show artifacts.</TextBlock>
             <TextBlock Margin="10,0,0,10" Classes="help" TextWrapping="Wrap">Keeps your display mode and applies the required playback settings. While enabled, F8 switches pan smoothing on/off for comparison without changing your saved preference. Your custom keybindings take priority. Restart the player after changing this setting.</TextBlock>
 
             <CheckBox Margin="10,10,0,0" IsChecked="{Binding AnimeJaNaiConf.AutoDisplayRefresh}" IsEnabled="{Binding !AnimeJaNaiConf.CameraPanSmoothingActive}" Content="Automatic Display Refresh Rate (Experimental)" />
