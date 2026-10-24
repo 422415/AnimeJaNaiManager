@@ -31,6 +31,7 @@ namespace AnimeJaNaiConfEditor.Views
         {
             AvaloniaXamlLoader.Load(this);
             this.FindControl<AddonsView>("AddonPanel")?.ProtectUnsavedSettingsOnClose(this);
+            Closing += MainWindow_Closing;
             Opened += MainWindow_Opened;
             Closed += async (_, _) => { if (this.FindControl<AddonsView>("AddonPanel") is { } addons) await addons.CloseAsync(); };
         }
@@ -38,9 +39,17 @@ namespace AnimeJaNaiConfEditor.Views
         private async void MainWindow_Opened(object? sender, EventArgs e)
         {
             if (this.FindControl<AddonsView>("AddonPanel") is { } addons) await addons.ManagerOpenedAsync();
-            if (DataContext is MainWindowViewModel vm)
-            {
+        }
 
+        private async void MainWindow_Closing(object? sender, WindowClosingEventArgs e)
+        {
+            if (e.Cancel) return;
+            var diagnostics = this.FindControl<DiagnosticsView>("DiagnosticsPanel");
+            if (diagnostics?.IsBusy == true)
+            {
+                e.Cancel = true;
+                await diagnostics.FinishBeforeCloseAsync();
+                Close();
             }
         }
 

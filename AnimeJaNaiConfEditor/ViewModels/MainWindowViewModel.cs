@@ -1,4 +1,5 @@
-﻿using Avalonia.Collections;
+﻿using AnimeJaNaiConfEditor.Services;
+using Avalonia.Collections;
 using ReactiveUI;
 using Salaros.Configuration;
 using System;
@@ -734,6 +735,7 @@ chain_2_rife=no";
             var slots = new Dictionary<string, UpscaleSlot>();
 
             animeJaNaiConf.EnableLogging = ParseBool(parser.GetValue("global", "logging", "no"));
+            animeJaNaiConf.AutoDisplayRefresh = ParseBool(parser.GetValue("global", "display_rate_match", "no"));
             animeJaNaiConf.BackendAutoFallback = ParseBool(parser.GetValue("global", "backend_auto_fallback", "no"));
             if (Enum.TryParse(parser.GetValue("global", "backend", "TensorRT"), out Backend backend))
             {
@@ -871,7 +873,9 @@ chain_2_rife=no";
                                     ModelNumber = currentModelNumber,
                                     Name = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_name", "0x0"),
                                     ResizeFactorBeforeUpscale = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_resize_factor_before_upscale", 100.ToString()),
-                                    ResizeHeightBeforeUpscale = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_resize_height_before_upscale", 0.ToString())
+                                    ResizeHeightBeforeUpscale = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_resize_height_before_upscale", 0.ToString()),
+                                    Frames = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_frames", 0.ToString()),
+                                    TemporalSceneThreshold = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_temporal_scene_threshold", UpscaleModel.DefaultTemporalSceneThreshold)
                                 };
                             }
                         }
@@ -984,7 +988,9 @@ chain_2_rife=no";
                                 ModelNumber = currentModelNumber,
                                 Name = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_name", "0x0"),
                                 ResizeFactorBeforeUpscale = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_resize_factor_before_upscale", 100.ToString()),
-                                ResizeHeightBeforeUpscale = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_resize_height_before_upscale", 0.ToString())
+                                ResizeHeightBeforeUpscale = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_resize_height_before_upscale", 0.ToString()),
+                                Frames = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_frames", 0.ToString()),
+                                TemporalSceneThreshold = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_temporal_scene_threshold", UpscaleModel.DefaultTemporalSceneThreshold)
                             };
                         }
                     }
@@ -1042,6 +1048,10 @@ chain_2_rife=no";
             {
                 parser.SetValue("global", "sub_render_mode", SUB_RENDER_MODE_GPU);
             }
+            if (conf.AutoDisplayRefresh)
+            {
+                parser.SetValue("global", "display_rate_match", "yes");
+            }
             // Write-minimal: only persist trt_engine_settings when it differs from the current
             // default, so future default changes apply automatically to users who didn't customize.
             if (conf.TrtEngineSettings != DEFAULT_TRT_ENGINE_SETTINGS)
@@ -1079,6 +1089,7 @@ chain_2_rife=no";
                         parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_resize_height_before_upscale", string.Create(ENGLISH_CULTURE, $"{model.ResizeHeightBeforeUpscale}"));
                         parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_resize_factor_before_upscale", string.Create(ENGLISH_CULTURE, $"{model.ResizeFactorBeforeUpscale}"));
                         parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_name", string.Create(ENGLISH_CULTURE, $"{model.Name}"));
+                        WriteTemporalKeys(parser, section, chain, model);
                     }
 
                     parser.SetValue(section, $"chain_{chain.ChainNumber}_rife", chain.EnableRife ? "yes" : "no");
@@ -1104,6 +1115,16 @@ chain_2_rife=no";
             parser.Save(fullPath);
         }
 
+        // Temporal model keys are optional: written only when they carry
+        // something, so confs without temporal models stay unchanged.
+        private static void WriteTemporalKeys(ConfigParser parser, string section, UpscaleChain chain, UpscaleModel model)
+        {
+            if (model.Frames != 0.ToString())
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_frames", string.Create(ENGLISH_CULTURE, $"{model.Frames}"));
+            if (model.IsTemporal || model.TemporalSceneThreshold != UpscaleModel.DefaultTemporalSceneThreshold)
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_temporal_scene_threshold", string.Create(ENGLISH_CULTURE, $"{model.TemporalSceneThreshold}"));
+        }
+
         public ConfigParser ParsedAnimeJaNaiProfileConf(UpscaleSlot slot)
         {
             var parser = new ConfigParser();
@@ -1122,6 +1143,7 @@ chain_2_rife=no";
                     parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_resize_height_before_upscale", string.Create(ENGLISH_CULTURE, $"{model.ResizeHeightBeforeUpscale}"));
                     parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_resize_factor_before_upscale", string.Create(ENGLISH_CULTURE, $"{model.ResizeFactorBeforeUpscale}"));
                     parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_name", string.Create(ENGLISH_CULTURE, $"{model.Name}"));
+                    WriteTemporalKeys(parser, section, chain, model);
                 }
 
                 parser.SetValue(section, $"chain_{chain.ChainNumber}_rife", chain.EnableRife ? "yes" : "no");
@@ -1319,7 +1341,8 @@ chain_2_rife=no";
                     x => x.QualitySharp,
                     x => x.BalancedSharp,
                     x => x.PerformanceSharp,
-                    x => x.GpuSubtitles).Subscribe(x =>
+                    x => x.GpuSubtitles,
+                    x => x.AutoDisplayRefresh).Subscribe(x =>
                     {
                         Vm?.WriteAnimeJaNaiConf();
                     });
@@ -1595,6 +1618,14 @@ chain_2_rife=no";
         }
 
         public Backend SelectedBackend => DirectMlSelected ? Backend.DirectML : Backend.TensorRT;
+
+        private bool _autoDisplayRefresh;
+        [DataMember]
+        public bool AutoDisplayRefresh
+        {
+            get => _autoDisplayRefresh;
+            set => this.RaiseAndSetIfChanged(ref _autoDisplayRefresh, value);
+        }
     }
 
     [DataContract]
@@ -1904,7 +1935,9 @@ chain_2_rife=no";
                     x => x.ModelNumber,
                     x => x.ResizeHeightBeforeUpscale,
                     x => x.ResizeFactorBeforeUpscale,
-                    x => x.Name
+                    x => x.Name,
+                    x => x.Frames,
+                    x => x.TemporalSceneThreshold
                 ).Subscribe(x =>
                 {
                     Vm?.WriteAnimeJaNaiConf();
@@ -1957,7 +1990,55 @@ chain_2_rife=no";
         public string Name
         {
             get => _name;
-            set => this.RaiseAndSetIfChanged(ref _name, value);
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _name, value);
+                RaiseTemporalChanged();
+            }
+        }
+
+        // Temporal (multi-frame) models: the engine detects the frame count
+        // from the onnx input; Frames overrides it when nonzero.
+        public const string DefaultTemporalSceneThreshold = "0.15";
+
+        private string _frames = 0.ToString();
+        [DataMember]
+        public string Frames
+        {
+            get => _frames;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _frames, value);
+                RaiseTemporalChanged();
+            }
+        }
+
+        private string _temporalSceneThreshold = DefaultTemporalSceneThreshold;
+        [DataMember]
+        public string TemporalSceneThreshold
+        {
+            get => _temporalSceneThreshold;
+            set => this.RaiseAndSetIfChanged(ref _temporalSceneThreshold, value);
+        }
+
+        public int TemporalFrames
+        {
+            get
+            {
+                if (int.TryParse(Frames, NumberStyles.Integer, CultureInfo.InvariantCulture, out var frames) && frames > 0)
+                    return frames;
+                if (Vm == null || string.IsNullOrEmpty(Name))
+                    return 1;
+                return OnnxInputShape.TemporalFrames(Path.Combine(Vm.OnnxPath, Name + ".onnx"));
+            }
+        }
+
+        public bool IsTemporal => TemporalFrames > 1;
+
+        private void RaiseTemporalChanged()
+        {
+            this.RaisePropertyChanged(nameof(TemporalFrames));
+            this.RaisePropertyChanged(nameof(IsTemporal));
         }
     }
 

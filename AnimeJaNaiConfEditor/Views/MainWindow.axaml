@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:AnimeJaNaiConfEditor.ViewModels"
+        xmlns:views="using:AnimeJaNaiConfEditor.Views"
         xmlns:local="using:AnimeJaNaiConfEditor"
         xmlns:views="using:AnimeJaNaiConfEditor.Views"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -278,6 +279,9 @@
             </Grid>
 
             <TextBlock Margin="10,0,0,10" Classes="help" TextWrapping="Wrap">Subtitle rendering changes take effect after you restart the player.</TextBlock>
+
+            <CheckBox Margin="10,10,0,0" IsChecked="{Binding AnimeJaNaiConf.AutoDisplayRefresh}" Content="Automatic Display Refresh Rate (Experimental)" />
+            <TextBlock Margin="10,0,0,10" Classes="help" TextWrapping="Wrap">Windows only. Chooses one refresh rate before playback and keeps it for the whole episode. Local videos are checked first, which may add a few seconds at startup. Fixed-rate videos use a matching rate. Mixed-rate videos prefer a rate matching all their cadences; otherwise, AJN chooses the rate with the least estimated timing error across the episode. Unverified videos use the highest supported rate. Resolution stays unchanged. Your screen may briefly go black during the initial switch. The original rate is restored when playback ends. Off by default; restart the player after changing this setting.</TextBlock>
 
           </StackPanel>
           <StackPanel Orientation="Horizontal" Grid.Row="0" HorizontalAlignment="Right" VerticalAlignment="Top">
@@ -609,6 +613,13 @@
                                                 </Button>
                                                 <TextBlock Grid.Column="3" Classes="help" Margin="20,0,0,0">The upscaling model to run. To choose from more models, add ONNX model files to the models directory.</TextBlock>
                                               </Grid>
+                                              <Grid ColumnDefinitions="Auto,*" Margin="10,10,0,10" IsVisible="{Binding IsTemporal}">
+                                                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                                  <TextBlock Margin="0,0,5,0" VerticalAlignment="Center">Scene Change Threshold</TextBlock>
+                                                  <ui:FANumberBox Margin="0,0,5,0" Maximum="1" Minimum="0" SmallChange="0.01" Value="{Binding TemporalSceneThreshold}" />
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="1" Classes="help" Margin="20,0,0,0" Text="{Binding TemporalFrames, StringFormat='This is a temporal model: it upscales each frame from a {0}-frame window around it. Neighbors across a scene change (an average frame difference above this threshold) are replaced by the nearest frame from the same scene. Set to 0 to disable scene detection.'}" />
+                                              </Grid>
                                             </StackPanel>
 
                                             <Button Grid.Row="0" HorizontalAlignment="Right" VerticalAlignment="Top" Command="{Binding $parent[ItemsControl].((vm:UpscaleChain)DataContext).DeleteModel}" CommandParameter="{Binding}">
@@ -759,6 +770,9 @@
   </TabItem>
   <TabItem Header="Addons">
     <views:AddonsView x:Name="AddonPanel"/>
+  </TabItem>
+  <TabItem Header="Troubleshooting">
+    <views:DiagnosticsView x:Name="DiagnosticsPanel"/>
   </TabItem>
   </TabControl>
 </Window>
