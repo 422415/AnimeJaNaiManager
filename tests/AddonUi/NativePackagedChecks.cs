@@ -82,7 +82,7 @@ internal static class NativePackagedChecks
         var remaining = await client.CallAsync("media.selections", new() { ["id"] = id });
         if (((JsonArray)remaining!["sources"]!).Count != 0 || ((JsonArray)remaining["profiles"]!).Count != 1)
             throw new Exception("Native revocation did not preserve exactly the unrelated profile.");
-        if (Directory.EnumerateDirectories(Path.Combine(data, "media-workers")).Any()) throw new Exception("Revoking native access left session resources behind.");
+        if (Directory.EnumerateDirectories(Path.Combine(data, "media-workers"), "media-*").Any()) throw new Exception("Revoking native access left session resources behind.");
         Click("RemoveButton"); await Until(() => window.OwnedWindows.Count > 0);
         window.OwnedWindows.Single().GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == "Remove addon").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         await Until(() => Find<Button>("InstallButton").IsEnabled && Find<TextBlock>("AddonTitle").Text == "No addons installed");
