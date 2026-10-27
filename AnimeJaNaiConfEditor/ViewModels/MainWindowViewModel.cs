@@ -57,6 +57,9 @@ namespace AnimeJaNaiConfEditor.ViewModels
             File.Exists(Path.Combine(DataDir, "inference",
                 OperatingSystem.IsWindows() ? "nvinfer_11.dll" : "libnvinfer.so.11"));
 
+        // DirectML (D3D12) is Windows-only; on Linux TensorRT is the only backend.
+        public bool DirectMlAvailable => OperatingSystem.IsWindows();
+
         public static bool RifeOnDisk() =>
             Directory.Exists(Path.Combine(DataDir, "rife")) &&
             Directory.EnumerateFiles(Path.Combine(DataDir, "rife"), "*.onnx").Any();
@@ -135,7 +138,19 @@ namespace AnimeJaNaiConfEditor.ViewModels
             TrtSelectable = trtUsable;
 
             string notice = "";
-            if (trtUsable && AnimeJaNaiConf != null && AnimeJaNaiConf.DirectMlSelected &&
+            if (!DirectMlAvailable)
+            {
+                // Linux has no DirectML: TensorRT is the only backend, installed or not
+                TrtSelectable = true;
+                if (AnimeJaNaiConf?.DirectMlSelected == true)
+                {
+                    AnimeJaNaiConf.BackendAutoFallback = false;
+                    AnimeJaNaiConf.SetTensorRtSelected();
+                }
+                if (!trtInstalled)
+                    notice = "TensorRT is not installed - install it from the Components tab.";
+            }
+            else if (trtUsable && AnimeJaNaiConf != null && AnimeJaNaiConf.DirectMlSelected &&
                 AnimeJaNaiConf.BackendAutoFallback)
             {
                 // TensorRT is the natural path on NVIDIA: the DirectML selection was

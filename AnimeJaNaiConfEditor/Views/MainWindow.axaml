@@ -317,7 +317,7 @@
                 </ToolTip.Tip>
               </ContentControl>
               <ToggleButton IsChecked="{Binding AnimeJaNaiConf.TensorRtSelected}" Content="TensorRT" Command="{Binding AnimeJaNaiConf.UserSelectTensorRt}" IsEnabled="{Binding TrtSelectable}" />
-              <ToggleButton IsChecked="{Binding AnimeJaNaiConf.DirectMlSelected}" Content="DirectML" Command="{Binding AnimeJaNaiConf.UserSelectDirectMl}" />
+              <ToggleButton IsChecked="{Binding AnimeJaNaiConf.DirectMlSelected}" Content="DirectML" Command="{Binding AnimeJaNaiConf.UserSelectDirectMl}" IsVisible="{Binding DirectMlAvailable}" />
             </StackPanel>
 
             <TextBlock TextWrapping="Wrap" Foreground="Orange" IsVisible="{Binding HasBackendNotice}" Text="{Binding BackendNotice}" />
