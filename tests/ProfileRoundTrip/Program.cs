@@ -38,7 +38,8 @@ try
         Console.WriteLine($"PASS ensemble={ensemble}");
     }
 
-    // Temporal fix: a chain toggle written as one trailing temporalfix model.
+
+    // Temporal fix: chain_N_temporal_fix_model / _scene_threshold, the models untouched.
     foreach (var name in new[] { "temporalfix_s1_v1_op18_fp16", "temporalfix_s1_v1.1_op18_fp16",
                                  "temporalfix_s2_v1_op18_fp16", "temporalfix_s3_v1_op18_fp16", "upscaler" })
         File.WriteAllBytes(Path.Combine(data, "onnx", name + ".onnx"), []);
@@ -50,8 +51,8 @@ try
     string Section(string conf) => File.ReadAllText(conf).Replace("\r", "");
     string off = Path.Combine(data, "tfix-off.conf");
     vm.WriteAnimeJaNaiConf(off);
-    if (Section(off).Contains("temporalfix") || Section(off).Contains("model_2_"))
-        throw new Exception("Temporal fix off must not write a model");
+    if (Section(off).Contains("temporal_fix") || Section(off).Contains("chain_1_upscale") || Section(off).Contains("model_2_"))
+        throw new Exception("Features that are off must not write keys");
     foreach (int strength in new[] { 1, 2, 3 })
     {
         chain.EnableTemporalFix = true;
@@ -59,9 +60,11 @@ try
         chain.TemporalFixSceneThreshold = 0.2M;
         string full = Path.Combine(data, $"tfix-{strength}.conf");
         vm.WriteAnimeJaNaiConf(full);
-        string expected = $"chain_1_model_2_name={MainWindowViewModel.TemporalFixModelName(strength)}\n";
-        if (!Section(full).Contains(expected) || !Section(full).Contains("chain_1_model_2_temporal_scene_threshold=0.2\n"))
-            throw new Exception($"Full config lacks the temporal fix model for strength {strength}:\n{Section(full)}");
+        string text = Section(full);
+        if (!text.Contains($"chain_1_temporal_fix_model={MainWindowViewModel.TemporalFixModelName(strength)}\n") ||
+            !text.Contains("chain_1_temporal_fix_scene_threshold=0.2\n") || text.Contains("model_2_") ||
+            !text.Contains("chain_1_model_1_name=upscaler\n"))
+            throw new Exception($"Full config lacks the temporal fix keys for strength {strength}:\n{text}");
         var reread = vm.ReadAnimeJaNaiConf(full).UpscaleSlots.First(s => s.SlotNumber == "1").Chains[0];
         if (!reread.EnableTemporalFix || reread.TemporalFixStrength != strength || reread.TemporalFixSceneThreshold != 0.2M ||
             reread.Models.Count != 1 || reread.Models[0].Name != "upscaler")
@@ -83,25 +86,44 @@ try
         throw new Exception("Turning temporal fix off must restore the original config");
     Console.WriteLine("PASS temporal fix off restores the config");
 
-    // Hand-written chains: only a plain trailing temporalfix model becomes the toggle.
+    // Upscaling off: chain_N_upscale=no, the models stay where they are.
+    chain.EnableUpscale = false;
+    chain.EnableTemporalFix = true;
+    chain.TemporalFixStrength = 2;
+    string noUpscale = Path.Combine(data, "no-upscale.conf");
+    vm.WriteAnimeJaNaiConf(noUpscale);
+    string noUpscaleText = Section(noUpscale);
+    if (!noUpscaleText.Contains("chain_1_upscale=no\n") || !noUpscaleText.Contains("chain_1_model_1_name=upscaler\n") ||
+        !noUpscaleText.Contains($"chain_1_temporal_fix_model={MainWindowViewModel.TemporalFixModelName(2)}\n"))
+        throw new Exception($"Upscaling off must write upscale=no and keep the models:\n{noUpscaleText}");
+    var rereadOff = vm.ReadAnimeJaNaiConf(noUpscale).UpscaleSlots.First(s => s.SlotNumber == "1").Chains[0];
+    if (rereadOff.EnableUpscale || !rereadOff.EnableTemporalFix || rereadOff.Models.Count != 1 || rereadOff.Models[0].Name != "upscaler")
+        throw new Exception("Full config lost upscaling off");
+    string noUpscaleProfile = Path.Combine(data, "no-upscale-profile.conf");
+    vm.WriteAnimeJaNaiCurrentProfileConf(noUpscaleProfile);
+    vm.ReadAnimeJaNaiConfToCurrentSlot(noUpscaleProfile, false);
+    chain = vm.CurrentSlot.Chains[0];
+    if (chain.EnableUpscale || chain.Models.Count != 1 || chain.Models[0].Name != "upscaler")
+        throw new Exception("Profile import lost upscaling off");
+    chain.EnableUpscale = true;
+    chain.EnableTemporalFix = false;
+    string upscaleAgain = Path.Combine(data, "upscale-again.conf");
+    vm.WriteAnimeJaNaiConf(upscaleAgain);
+    if (Section(upscaleAgain) != Section(off))
+        throw new Exception("Turning upscaling back on must restore the original config");
+    Console.WriteLine("PASS upscaling off keeps the models and round-trips");
+
+    // A temporalfix model in the model list (written by hand) is just a model.
     string hand = Path.Combine(data, "tfix-hand.conf");
     File.WriteAllText(hand,
         "[global]\nconfig_version=3\n" +
-        "[slot_1]\nprofile_name=Mid\nchain_1_model_1_name=temporalfix_s2_v1_op18_fp16\nchain_1_model_2_name=upscaler\n" +
-        "[slot_2]\nprofile_name=Resized\nchain_1_model_1_name=upscaler\nchain_1_model_2_resize_factor_before_upscale=50\nchain_1_model_2_name=temporalfix_s2_v1_op18_fp16\n" +
-        "[slot_3]\nprofile_name=Trailing\nchain_1_model_1_name=upscaler\nchain_1_model_2_name=temporalfix_s3_v1_op18_fp16\n");
-    var slots = vm.ReadAnimeJaNaiConf(hand).UpscaleSlots;
-    var mid = slots.First(s => s.SlotNumber == "1").Chains[0];
-    if (mid.EnableTemporalFix || mid.Models.Count != 2 || !mid.Models[0].AllModels.Contains("temporalfix_s2_v1_op18_fp16"))
-        throw new Exception("A mid-chain temporalfix model must stay a normal, selectable model");
-    if (slots.First(s => s.SlotNumber == "2").Chains[0] is var resized && (resized.EnableTemporalFix || resized.Models.Count != 2))
-        throw new Exception("A resized trailing temporalfix model must stay a normal model");
-    var trailing = slots.First(s => s.SlotNumber == "3").Chains[0];
-    if (!trailing.EnableTemporalFix || trailing.TemporalFixStrength != 3 || trailing.Models.Count != 1)
-        throw new Exception("A plain trailing temporalfix model must become the toggle");
+        "[slot_1]\nprofile_name=Trailing\nchain_1_model_1_name=upscaler\nchain_1_model_2_name=temporalfix_s3_v1_op18_fp16\n");
+    var trailing = vm.ReadAnimeJaNaiConf(hand).UpscaleSlots.First(s => s.SlotNumber == "1").Chains[0];
+    if (trailing.EnableTemporalFix || trailing.Models.Count != 2 || !trailing.Models[1].AllModels.Contains("temporalfix_s3_v1_op18_fp16"))
+        throw new Exception("A temporalfix model in the model list must stay a normal, selectable model");
     if (trailing.Models[0].AllModels.Any(m => m.StartsWith("temporalfix")))
         throw new Exception("Temporal fix models must not be offered in the model list");
-    Console.WriteLine("PASS hand-written temporal fix chains");
+    Console.WriteLine("PASS hand-written temporalfix model stays a model");
     return 0;
 }
 catch (Exception ex)
