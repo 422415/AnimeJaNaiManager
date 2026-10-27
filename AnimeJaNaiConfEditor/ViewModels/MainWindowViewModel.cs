@@ -52,15 +52,16 @@ namespace AnimeJaNaiConfEditor.ViewModels
         // Install state comes from the disk (works offline); GPU identity comes from the
         // component engine once its refresh completes.
 
+        // The TensorRT core library: nvinfer_11.dll on Windows, libnvinfer.so.11 on Linux.
         public static bool TrtOnDisk() =>
-            File.Exists(Path.Combine(DataDir, "inference", "nvinfer_11.dll"));
+            File.Exists(Path.Combine(DataDir, "inference",
+                OperatingSystem.IsWindows() ? "nvinfer_11.dll" : "libnvinfer.so.11"));
 
         public static bool RifeOnDisk() =>
             Directory.Exists(Path.Combine(DataDir, "rife")) &&
             Directory.EnumerateFiles(Path.Combine(DataDir, "rife"), "*.onnx").Any();
 
-        // Temporal fix (vs_temporalfix) runs as a trailing temporal model; the conf has no key of
-        // its own, so a chain's last model named like this is shown as the chain's toggle instead.
+        // Temporal fix (vs_temporalfix) model files, temporalfix_s<strength>_v<version>_*.onnx.
         public static readonly Regex TemporalFixModelRegex = new(@"^temporalfix_s(\d+)_v(\d+(?:\.\d+)*)_", RegexOptions.IgnoreCase);
         public static readonly List<int> TemporalFixStrengths = [1, 2, 3];
         // The files shipped in onnx/; used when the folder has no model for a strength.
@@ -1304,7 +1305,8 @@ chain_2_rife=no";
         {
             await Task.Run(() =>
             {
-                Process.Start("explorer.exe", OnnxPath);
+                // The shell opens folders with the platform's file manager (xdg-open on Linux).
+                Process.Start(new ProcessStartInfo(OnnxPath) { UseShellExecute = true });
             });
         }
 
