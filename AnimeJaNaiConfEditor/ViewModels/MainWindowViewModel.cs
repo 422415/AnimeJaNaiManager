@@ -2231,7 +2231,7 @@ chain_2_rife=no";
 
         // Run temporal fix at the source resolution before the upscale models (much cheaper)
         // instead of on the upscaled frames (also steadies shimmer the upscaler adds).
-        public const bool DefaultTemporalFixBeforeUpscale = false;
+        public const bool DefaultTemporalFixBeforeUpscale = true;
 
         private bool _temporalFixBeforeUpscale = DefaultTemporalFixBeforeUpscale;
         [DataMember]
