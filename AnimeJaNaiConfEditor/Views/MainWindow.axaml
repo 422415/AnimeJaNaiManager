@@ -642,6 +642,31 @@
                                 </Button>
 
                                 <Grid ColumnDefinitions="Auto,*" Margin="10,10,0,10" >
+                                  <CheckBox Grid.Column="0" IsChecked="{Binding EnableTemporalFix}" Content="Enable Temporal Fix" IsEnabled="{Binding TemporalFixToggleEnabled}" />
+                                  <TextBlock Grid.Column="1" Classes="help" Margin="20,0,0,0">Reduce flicker and shimmer after upscaling, mostly useful for DVD and other SD sources. Runs at the upscaled resolution, so realtime playback needs a high-end GPU.</TextBlock>
+                                </Grid>
+
+                                <TextBlock Margin="10,0,0,10" TextWrapping="Wrap" Foreground="Orange"
+                                           IsVisible="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).TemporalFixMissing}"
+                                           Text="Temporal fix models are not installed. Update AnimeJaNai to use temporal fix." />
+
+                                <Grid ColumnDefinitions="Auto,*" Margin="10,10,0,10" IsVisible="{Binding EnableTemporalFix}">
+                                  <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                    <TextBlock Margin="0,0,5,0" VerticalAlignment="Center" Text="Strength" />
+                                    <ComboBox Margin="0,0,5,0" VerticalAlignment="Center" SelectedValue="{Binding TemporalFixStrength}" ItemsSource="{x:Static vm:UpscaleChain.TemporalFixStrengths}" />
+                                  </StackPanel>
+                                  <TextBlock Grid.Column="1" Classes="help" Foreground="Gray" Margin="20,0,0,0" Text="Higher strength removes more flicker but may smooth away fine detail." />
+                                </Grid>
+
+                                <Grid ColumnDefinitions="Auto,*" Margin="10,10,0,10" IsVisible="{Binding EnableTemporalFix}">
+                                  <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                    <TextBlock Margin="0,0,5,0" VerticalAlignment="Center" Text="Scene Change Threshold" />
+                                    <NumericUpDown Value="{Binding TemporalFixSceneThreshold}" Minimum="0" FormatString="0.000" Maximum="1" Increment="0.01" />
+                                  </StackPanel>
+                                  <TextBlock Grid.Column="1" Classes="help" Foreground="Gray" Margin="20,0,0,0" Text="Temporal fix blends each frame with its neighbors. Neighbors across a scene change (an average frame difference above this threshold) are replaced by the nearest frame from the same scene. Set to 0 to disable scene detection." />
+                                </Grid>
+
+                                <Grid ColumnDefinitions="Auto,*" Margin="10,10,0,10" >
                                   <CheckBox Grid.Column="0" IsChecked="{Binding EnableRife}" Content="Enable RIFE Interpolation" IsEnabled="{Binding RifeToggleEnabled}" />
                                   <TextBlock Grid.Column="1" Classes="help" Margin="20,0,0,0">Whether or not to run RIFE video frame interpolation.</TextBlock>
                                 </Grid>
