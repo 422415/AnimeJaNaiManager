@@ -58,6 +58,39 @@ namespace AnimeJaNaiConfEditor.ViewModels
             Directory.Exists(Path.Combine(DataDir, "rife")) &&
             Directory.EnumerateFiles(Path.Combine(DataDir, "rife"), "*.onnx").Any();
 
+        // Temporal fix (vs_temporalfix) runs as a trailing temporal model; the conf has no key of
+        // its own, so a chain's last model named like this is shown as the chain's toggle instead.
+        public static readonly Regex TemporalFixModelRegex = new(@"^temporalfix_s(\d+)_v(\d+(?:\.\d+)*)_", RegexOptions.IgnoreCase);
+        public static readonly List<int> TemporalFixStrengths = [1, 2, 3];
+        // The files shipped in onnx/; used when the folder has no model for a strength.
+        private static readonly Dictionary<int, string> BundledTemporalFixModels = new()
+        {
+            [1] = "temporalfix_s1_v1.1_op18_fp16",
+            [2] = "temporalfix_s2_v1_op18_fp16",
+            [3] = "temporalfix_s3_v1_op18_fp16",
+        };
+
+        // The newest temporalfix model for a strength in onnx/ (no extension), or null.
+        public static string? TemporalFixModelOnDisk(int strength)
+        {
+            var onnx = Path.Combine(DataDir, "onnx");
+            if (!Directory.Exists(onnx))
+                return null;
+            return Directory.EnumerateFiles(onnx, $"temporalfix_s{strength}_v*.onnx")
+                .Select(Path.GetFileNameWithoutExtension)
+                .Select(name => (name, m: TemporalFixModelRegex.Match(name!)))
+                .Where(x => x.m.Success && int.Parse(x.m.Groups[1].Value) == strength)
+                .OrderBy(x => Version.Parse(x.m.Groups[2].Value.Contains('.') ? x.m.Groups[2].Value : x.m.Groups[2].Value + ".0"))
+                .Select(x => x.name)
+                .LastOrDefault();
+        }
+
+        public static string TemporalFixModelName(int strength) =>
+            TemporalFixModelOnDisk(strength) ?? BundledTemporalFixModels.GetValueOrDefault(strength, $"temporalfix_s{strength}_v1_op18_fp16");
+
+        public static bool TemporalFixOnDisk() =>
+            TemporalFixStrengths.All(s => TemporalFixModelOnDisk(s) != null);
+
         private bool _trtSelectable = true;
         public bool TrtSelectable
         {
@@ -83,6 +116,13 @@ namespace AnimeJaNaiConfEditor.ViewModels
         {
             get => _rifeMissing;
             set => this.RaiseAndSetIfChanged(ref _rifeMissing, value);
+        }
+
+        private bool _temporalFixMissing;
+        public bool TemporalFixMissing
+        {
+            get => _temporalFixMissing;
+            set => this.RaiseAndSetIfChanged(ref _temporalFixMissing, value);
         }
 
         public void RefreshComponentAwareness()
@@ -121,13 +161,15 @@ namespace AnimeJaNaiConfEditor.ViewModels
             }
             BackendNotice = notice;
             RifeMissing = !RifeOnDisk();
+            TemporalFixMissing = !TemporalFixOnDisk();
 
-            // per-chain RIFE toggles derive from RifeMissing; let them re-evaluate
+            // per-chain RIFE and temporal fix toggles derive from the Missing flags; let them re-evaluate
             foreach (var slot in AnimeJaNaiConf?.UpscaleSlots ?? [])
             {
                 foreach (var chain in slot.Chains)
                 {
                     chain.RaisePropertyChanged(nameof(UpscaleChain.RifeToggleEnabled));
+                    chain.RaisePropertyChanged(nameof(UpscaleChain.TemporalFixToggleEnabled));
                 }
             }
         }
@@ -569,10 +611,13 @@ chain_2_rife=no";
             }
         }
 
-        public AvaloniaList<string> GetAllModels()
+        // Temporal fix models are left out (the chain's toggle adds them), except `current`, so a
+        // hand-written conf that runs one mid-chain still shows its model.
+        public AvaloniaList<string> GetAllModels(string? current = null)
         {
             return new AvaloniaList<string>(Directory.GetFiles(OnnxPath).Where(filename => Path.GetExtension(filename).Equals(".onnx", StringComparison.CurrentCultureIgnoreCase))
                 .Select(filename => Path.GetFileNameWithoutExtension(filename))
+                .Where(name => name == current || !TemporalFixModelRegex.IsMatch(name))
                 .Order().ToList());
         }
 
@@ -866,12 +911,13 @@ chain_2_rife=no";
                                     continue;
                                 }
 
+                                var modelName = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_name", "0x0");
                                 models[currentChainNumber][currentModelNumber] = new UpscaleModel(autoSave)
                                 {
                                     Vm = this,
-                                    AllModels = GetAllModels(),
+                                    AllModels = GetAllModels(modelName),
                                     ModelNumber = currentModelNumber,
-                                    Name = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_name", "0x0"),
+                                    Name = modelName,
                                     ResizeFactorBeforeUpscale = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_resize_factor_before_upscale", 100.ToString()),
                                     ResizeHeightBeforeUpscale = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_resize_height_before_upscale", 0.ToString()),
                                     Frames = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_frames", 0.ToString()),
@@ -883,7 +929,7 @@ chain_2_rife=no";
 
                     foreach (var currentChainNumber in models.Keys)
                     {
-                        chains[currentChainNumber].Models = new AvaloniaList<UpscaleModel>(models[currentChainNumber].Values.ToList());
+                        chains[currentChainNumber].Models = new AvaloniaList<UpscaleModel>(TakeTrailingTemporalFix(chains[currentChainNumber], models[currentChainNumber].Values.ToList()));
                     }
 
                     slots[currentSlotNumber] = new UpscaleSlot(autoSave)
@@ -981,12 +1027,13 @@ chain_2_rife=no";
                                 continue;
                             }
 
+                            var modelName = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_name", "0x0");
                             models[currentChainNumber][currentModelNumber] = new UpscaleModel(true)
                             {
                                 Vm = this,
-                                AllModels = GetAllModels(),
+                                AllModels = GetAllModels(modelName),
                                 ModelNumber = currentModelNumber,
-                                Name = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_name", "0x0"),
+                                Name = modelName,
                                 ResizeFactorBeforeUpscale = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_resize_factor_before_upscale", 100.ToString()),
                                 ResizeHeightBeforeUpscale = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_resize_height_before_upscale", 0.ToString()),
                                 Frames = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_frames", 0.ToString()),
@@ -998,7 +1045,7 @@ chain_2_rife=no";
 
                 foreach (var currentChainNumber in models.Keys)
                 {
-                    chains[currentChainNumber].Models = new AvaloniaList<UpscaleModel>(models[currentChainNumber].Values.ToList());
+                    chains[currentChainNumber].Models = new AvaloniaList<UpscaleModel>(TakeTrailingTemporalFix(chains[currentChainNumber], models[currentChainNumber].Values.ToList()));
                 }
 
                 CurrentSlot.Vm = this;
@@ -1010,6 +1057,47 @@ chain_2_rife=no";
         static bool ParseBool(string value)
         {
             return value?.ToLower() == "yes";
+        }
+
+        // A chain's last model, when it is a plain temporalfix model (no resize, no frame override),
+        // is the chain's temporal fix toggle: move it out of the model list onto the chain.
+        private static List<UpscaleModel> TakeTrailingTemporalFix(UpscaleChain chain, List<UpscaleModel> models)
+        {
+            var last = models.MaxBy(m => int.TryParse(m.ModelNumber, out var n) ? n : 0);
+            if (last == null)
+                return models;
+            var match = TemporalFixModelRegex.Match(last.Name ?? "");
+            if (!match.Success || !int.TryParse(match.Groups[1].Value, out var strength) ||
+                !TemporalFixStrengths.Contains(strength) ||
+                last.ResizeHeightBeforeUpscale != 0.ToString() || last.ResizeFactorBeforeUpscale != 100.ToString() ||
+                last.Frames != 0.ToString())
+                return models;
+
+            chain.TemporalFixStrength = strength;
+            if (decimal.TryParse(last.TemporalSceneThreshold, NumberStyles.Float, ENGLISH_CULTURE, out var threshold))
+                chain.TemporalFixSceneThreshold = threshold;
+            chain.EnableTemporalFix = true;
+            return [.. models.Where(m => m != last)];
+        }
+
+        private static void WriteChainModels(ConfigParser parser, string section, UpscaleChain chain)
+        {
+            foreach (var model in chain.Models)
+            {
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_resize_height_before_upscale", string.Create(ENGLISH_CULTURE, $"{model.ResizeHeightBeforeUpscale}"));
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_resize_factor_before_upscale", string.Create(ENGLISH_CULTURE, $"{model.ResizeFactorBeforeUpscale}"));
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_name", string.Create(ENGLISH_CULTURE, $"{model.Name}"));
+                WriteTemporalKeys(parser, section, chain, model);
+            }
+
+            if (chain.EnableTemporalFix)
+            {
+                var number = chain.Models.Select(m => int.TryParse(m.ModelNumber, out var n) ? n : 0).DefaultIfEmpty(0).Max() + 1;
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{number}_resize_height_before_upscale", "0");
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{number}_resize_factor_before_upscale", "100");
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{number}_name", TemporalFixModelName(chain.TemporalFixStrength));
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{number}_temporal_scene_threshold", string.Create(ENGLISH_CULTURE, $"{chain.TemporalFixSceneThreshold}"));
+            }
         }
 
         public void WriteAnimeJaNaiConf()
@@ -1084,13 +1172,7 @@ chain_2_rife=no";
                     parser.SetValue(section, $"chain_{chain.ChainNumber}_min_fps", string.Create(ENGLISH_CULTURE, $"{chain.MinFps}"));
                     parser.SetValue(section, $"chain_{chain.ChainNumber}_max_fps", string.Create(ENGLISH_CULTURE, $"{chain.MaxFps}"));
 
-                    foreach (var model in chain.Models)
-                    {
-                        parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_resize_height_before_upscale", string.Create(ENGLISH_CULTURE, $"{model.ResizeHeightBeforeUpscale}"));
-                        parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_resize_factor_before_upscale", string.Create(ENGLISH_CULTURE, $"{model.ResizeFactorBeforeUpscale}"));
-                        parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_name", string.Create(ENGLISH_CULTURE, $"{model.Name}"));
-                        WriteTemporalKeys(parser, section, chain, model);
-                    }
+                    WriteChainModels(parser, section, chain);
 
                     parser.SetValue(section, $"chain_{chain.ChainNumber}_rife", chain.EnableRife ? "yes" : "no");
                     chain.RifeModel ??= chain.RifeModelList.FirstOrDefault("");
@@ -1138,13 +1220,7 @@ chain_2_rife=no";
                 parser.SetValue(section, $"chain_{chain.ChainNumber}_min_fps", string.Create(ENGLISH_CULTURE, $"{chain.MinFps}"));
                 parser.SetValue(section, $"chain_{chain.ChainNumber}_max_fps", string.Create(ENGLISH_CULTURE, $"{chain.MaxFps}"));
 
-                foreach (var model in chain.Models)
-                {
-                    parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_resize_height_before_upscale", string.Create(ENGLISH_CULTURE, $"{model.ResizeHeightBeforeUpscale}"));
-                    parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_resize_factor_before_upscale", string.Create(ENGLISH_CULTURE, $"{model.ResizeFactorBeforeUpscale}"));
-                    parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{model.ModelNumber}_name", string.Create(ENGLISH_CULTURE, $"{model.Name}"));
-                    WriteTemporalKeys(parser, section, chain, model);
-                }
+                WriteChainModels(parser, section, chain);
 
                 parser.SetValue(section, $"chain_{chain.ChainNumber}_rife", chain.EnableRife ? "yes" : "no");
                 parser.SetValue(section, $"chain_{chain.ChainNumber}_rife_factor_numerator", string.Create(ENGLISH_CULTURE, $"{chain.RifeFactorNumerator ?? 0}"));
@@ -1755,7 +1831,13 @@ chain_2_rife=no";
                     x => x.RifeBeforeUpscale
                 );
 
-                g1.CombineLatest(g2).Subscribe(x =>
+                var g3 = this.WhenAnyValue(
+                    x => x.EnableTemporalFix,
+                    x => x.TemporalFixStrength,
+                    x => x.TemporalFixSceneThreshold
+                );
+
+                g1.CombineLatest(g2, g3).Subscribe(x =>
                 {
                     Vm?.WriteAnimeJaNaiConf();
                 });
@@ -1887,6 +1969,42 @@ chain_2_rife=no";
         {
             get => _rifeBeforeUpscale;
             set => this.RaiseAndSetIfChanged(ref _rifeBeforeUpscale, value);
+        }
+
+        // Temporal fix: a vs_temporalfix model run after the chain's models, written to the conf as
+        // one more trailing model (see MainWindowViewModel.TakeTrailingTemporalFix).
+        private bool _enableTemporalFix = false;
+        [DataMember]
+        public bool EnableTemporalFix
+        {
+            get => _enableTemporalFix;
+            set
+            {
+                this.RaiseAndSetIfChanged(ref _enableTemporalFix, value);
+                this.RaisePropertyChanged(nameof(TemporalFixToggleEnabled));
+            }
+        }
+
+        // Same rule as RifeToggleEnabled: locked only while unchecked and not installed.
+        public bool TemporalFixToggleEnabled =>
+            EnableTemporalFix || !(MainWindowViewModel.Instance?.TemporalFixMissing ?? false);
+
+        public static List<int> TemporalFixStrengths => MainWindowViewModel.TemporalFixStrengths;
+
+        private int _temporalFixStrength = 2;
+        [DataMember]
+        public int TemporalFixStrength
+        {
+            get => _temporalFixStrength;
+            set => this.RaiseAndSetIfChanged(ref _temporalFixStrength, value);
+        }
+
+        private decimal? _temporalFixSceneThreshold = decimal.Parse(UpscaleModel.DefaultTemporalSceneThreshold, CultureInfo.InvariantCulture);
+        [DataMember]
+        public decimal? TemporalFixSceneThreshold
+        {
+            get => _temporalFixSceneThreshold;
+            set => this.RaiseAndSetIfChanged(ref _temporalFixSceneThreshold, value ?? decimal.Parse(UpscaleModel.DefaultTemporalSceneThreshold, CultureInfo.InvariantCulture));
         }
 
         public void AddModel()
