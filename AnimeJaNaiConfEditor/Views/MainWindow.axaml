@@ -593,7 +593,7 @@
                     <Expander Classes="section" IsExpanded="{Binding UpscaleSectionExpanded}">
                       <Expander.Header>
                         <Grid ColumnDefinitions="Auto,*">
-                          <ContentControl Classes="hint" Margin="0,0,12,0" ToolTip.Tip="Run the upscale models below. Turn off to play the video at its own resolution, still applying Temporal Fix or RIFE if they are on. The models are kept for when you turn it back on.">
+                          <ContentControl Classes="hint" Margin="0,0,12,0" ToolTip.Tip="Whether or not to run the upscale models.">
                             <CheckBox Classes="sectionTitle" IsChecked="{Binding EnableUpscale}" Content="Upscaling" />
                           </ContentControl>
                           <TextBlock Grid.Column="1" Classes="summary" Text="{Binding UpscaleSummary}" />
