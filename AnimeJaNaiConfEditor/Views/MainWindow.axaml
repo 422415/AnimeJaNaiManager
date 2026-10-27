@@ -674,7 +674,7 @@
                             <ContentControl Classes="hint" Content="Scene Change Threshold" ToolTip.Tip="Temporal fix blends each frame with its neighbors. Neighbors across a scene change (an average frame difference above this threshold) are replaced by the nearest frame from the same scene. Set to 0 to disable scene detection." />
                             <NumericUpDown Value="{Binding TemporalFixSceneThreshold}" Minimum="0" FormatString="0.000" Maximum="1" Increment="0.01" />
                           </StackPanel>
-                          <ContentControl Classes="hint" IsEnabled="{Binding EnableUpscale}" ToolTip.Tip="Run temporal fix at the source resolution before upscaling (faster, recommended): 2-3x faster, so it plays in realtime on more GPUs. Uncheck to run it on the upscaled frames instead, which also steadies shimmer added by the upscaler but needs a high-end GPU.">
+                          <ContentControl Classes="hint" IsEnabled="{Binding EnableUpscale}" ToolTip.Tip="Run temporal fix at the source resolution before upscaling (faster, recommended). It is 2-3x faster, so it plays in realtime on more GPUs. Uncheck for the highest quality: temporal fix then runs on the upscaled frames and also steadies shimmer added by the upscaler, but needs a high-end GPU.">
                             <CheckBox IsChecked="{Binding TemporalFixBeforeUpscale}" Content="Fix before upscaling" />
                           </ContentControl>
                         </StackPanel>
