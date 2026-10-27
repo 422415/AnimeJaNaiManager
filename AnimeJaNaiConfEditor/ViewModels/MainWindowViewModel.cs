@@ -1071,7 +1071,8 @@ chain_2_rife=no";
 
         // The chain's models plus its feature keys: chain_N_upscale=no (the engine skips the
         // models but they stay in the conf) and chain_N_temporal_fix_model (the engine runs it
-        // after the models, or alone). Both need aji v0.17.0+.
+        // after the models, or alone). Both need aji v0.17.0+; temporal_fix_before_upscale
+        // (run it before the models instead) needs v0.17.1+.
         private static AvaloniaList<UpscaleModel> ReadChainFeatures(ConfigParser parser, string section, UpscaleChain chain,
             Dictionary<string, Dictionary<string, UpscaleModel>> models)
         {
@@ -1086,6 +1087,8 @@ chain_2_rife=no";
                     chain.TemporalFixStrength = strength;
                 if (decimal.TryParse(Get("temporal_fix_scene_threshold"), NumberStyles.Float, ENGLISH_CULTURE, out var threshold))
                     chain.TemporalFixSceneThreshold = threshold;
+                // absent = the engine's default order, after the models
+                chain.TemporalFixBeforeUpscale = Get("temporal_fix_before_upscale") is { } before && ParseBool(before);
                 chain.EnableTemporalFix = true;
             }
 
@@ -1109,6 +1112,9 @@ chain_2_rife=no";
             {
                 parser.SetValue(section, $"chain_{chain.ChainNumber}_temporal_fix_model", TemporalFixModelName(chain.TemporalFixStrength));
                 parser.SetValue(section, $"chain_{chain.ChainNumber}_temporal_fix_scene_threshold", string.Create(ENGLISH_CULTURE, $"{chain.TemporalFixSceneThreshold}"));
+                // always written, so the Manager's default order can change without
+                // changing what existing confs mean
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_temporal_fix_before_upscale", chain.TemporalFixBeforeUpscale ? "yes" : "no");
             }
         }
 
@@ -1864,7 +1870,8 @@ chain_2_rife=no";
                     x => x.EnableUpscale,
                     x => x.EnableTemporalFix,
                     x => x.TemporalFixStrength,
-                    x => x.TemporalFixSceneThreshold
+                    x => x.TemporalFixSceneThreshold,
+                    x => x.TemporalFixBeforeUpscale
                 );
 
                 g1.CombineLatest(g2, g3).Subscribe(x =>
@@ -2039,7 +2046,8 @@ chain_2_rife=no";
             : Models.Count > 0 ? string.Join(" → ", Models.Select(m => ShortModelName(m.Name)))
             : "no models";
 
-        public string TemporalFixSummary => EnableTemporalFix ? $"Strength {TemporalFixStrength}" : "Off";
+        public string TemporalFixSummary => !EnableTemporalFix ? "Off"
+            : $"Strength {TemporalFixStrength}" + (EnableUpscale && TemporalFixBeforeUpscale ? " · before upscaling" : "");
 
         public string RifeSummary => EnableRife
             ? $"{RifeModel} · {RifeFactorNumerator}/{RifeFactorDenominator}" + (RifeEnsemble ? " · ensemble" : "")
@@ -2190,8 +2198,8 @@ chain_2_rife=no";
             }
         }
 
-        // Temporal fix: a vs_temporalfix model the engine runs after the chain's models
-        // (chain_N_temporal_fix_model; see MainWindowViewModel.ReadChainFeatures).
+        // Temporal fix: a vs_temporalfix model the engine runs after the chain's models, or
+        // before them (chain_N_temporal_fix_model; see MainWindowViewModel.ReadChainFeatures).
         private bool _enableTemporalFix = false;
         [DataMember]
         public bool EnableTemporalFix
@@ -2219,6 +2227,18 @@ chain_2_rife=no";
         {
             get => _temporalFixStrength;
             set => this.RaiseAndSetIfChanged(ref _temporalFixStrength, value);
+        }
+
+        // Run temporal fix at the source resolution before the upscale models (much cheaper)
+        // instead of on the upscaled frames (also steadies shimmer the upscaler adds).
+        public const bool DefaultTemporalFixBeforeUpscale = false;
+
+        private bool _temporalFixBeforeUpscale = DefaultTemporalFixBeforeUpscale;
+        [DataMember]
+        public bool TemporalFixBeforeUpscale
+        {
+            get => _temporalFixBeforeUpscale;
+            set => this.RaiseAndSetIfChanged(ref _temporalFixBeforeUpscale, value);
         }
 
         private decimal? _temporalFixSceneThreshold = decimal.Parse(UpscaleModel.DefaultTemporalSceneThreshold, CultureInfo.InvariantCulture);

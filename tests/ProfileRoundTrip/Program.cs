@@ -79,6 +79,27 @@ try
             throw new Exception($"Profile import lost temporal fix strength {strength}");
         Console.WriteLine($"PASS temporal fix strength={strength}");
     }
+    // Order: temporal_fix_before_upscale is written either way while temporal fix is on.
+    foreach (bool before in new[] { true, false })
+    {
+        chain.TemporalFixBeforeUpscale = before;
+        string full = Path.Combine(data, $"tfix-before-{before}.conf");
+        vm.WriteAnimeJaNaiConf(full);
+        if (!Section(full).Contains($"chain_1_temporal_fix_before_upscale={(before ? "yes" : "no")}\n"))
+            throw new Exception($"Full config lacks temporal_fix_before_upscale={before}");
+        if (vm.ReadAnimeJaNaiConf(full).UpscaleSlots.First(s => s.SlotNumber == "1").Chains[0].TemporalFixBeforeUpscale != before)
+            throw new Exception($"Full config lost temporal fix before upscale={before}");
+        string profile = Path.Combine(data, $"tfix-before-profile-{before}.conf");
+        vm.WriteAnimeJaNaiCurrentProfileConf(profile);
+        chain.TemporalFixBeforeUpscale = !before;
+        vm.ReadAnimeJaNaiConfToCurrentSlot(profile, false);
+        chain = vm.CurrentSlot.Chains[0];
+        if (chain.TemporalFixBeforeUpscale != before)
+            throw new Exception($"Profile import lost temporal fix before upscale={before}");
+        Console.WriteLine($"PASS temporal fix before upscale={before}");
+    }
+    chain.TemporalFixBeforeUpscale = UpscaleChain.DefaultTemporalFixBeforeUpscale;
+
     chain.EnableTemporalFix = false;
     string offAgain = Path.Combine(data, "tfix-off-again.conf");
     vm.WriteAnimeJaNaiConf(offAgain);
