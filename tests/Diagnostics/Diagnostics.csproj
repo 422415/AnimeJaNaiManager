@@ -9,6 +9,6 @@
     <Compile Include="../../AnimeJaNaiConfEditor/Services/Diagnostics/*.cs" Link="Production/%(Filename)%(Extension)" />
     <Compile Include="../../AnimeJaNaiConfEditor/Services/OnnxInputShape.cs" Link="Production/OnnxInputShape.cs" />
     <EmbeddedResource Include="../../AnimeJaNaiConfEditor/Services/Diagnostics/capture.lua" LogicalName="AnimeJaNaiManager.Diagnostics.capture.lua" />
-    <PackageReference Include="System.Management" Version="10.0.0" />
+    <PackageReference Include="System.Management" Version="10.0.14" />
   </ItemGroup>
 </Project>

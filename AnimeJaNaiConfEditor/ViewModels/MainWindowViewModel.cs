@@ -8,7 +8,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Reactive.Linq;
+using ReactiveUI.Primitives;
 using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -25,6 +25,7 @@ namespace AnimeJaNaiConfEditor.ViewModels
         public MainWindowViewModel()
         {
             Instance = this;
+            UiState.Load(DataDir);
             AnimeJaNaiConf = ReadAnimeJaNaiConf(AnimeJaNaiConfPath, true);
             // Built after the user conf loads so the read-only default profiles reflect the saved
             // standard/sharp preset.
@@ -210,7 +211,11 @@ namespace AnimeJaNaiConfEditor.ViewModels
             };
             try
             {
-                var result = await dialog.ShowAsync();
+                // Avalonia 12: give the dialog the window explicitly; the implicit host
+                // lookup can land on an internal root that FluentAvalonia can't use
+                var window = (Avalonia.Application.Current?.ApplicationLifetime as
+                    Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.MainWindow;
+                var result = window != null ? await dialog.ShowAsync(window) : await dialog.ShowAsync();
                 if (result == FluentAvalonia.UI.Controls.FAContentDialogResult.Primary)
                 {
                     await ComponentManager.InstallMissingPreselectedAsync();
@@ -468,6 +473,23 @@ chain_2_rife=no";
 
         public bool MpvConfDetected => File.Exists(MpvConfPath);
 
+
+        // Global Settings: the advanced TensorRT engine block starts collapsed
+        public bool TrtSectionExpanded
+        {
+            get => UiState.Current.GetExpanded("global:trt") ?? false;
+            set
+            {
+                UiState.Current.SetExpanded("global:trt", value);
+                this.RaisePropertyChanged();
+            }
+        }
+
+        public double SidebarWidth
+        {
+            get => UiState.Current.SidebarWidth;
+            set => UiState.Current.SetSidebarWidth(value);
+        }
 
         public void HandleShowGlobalSettings()
         {
@@ -895,41 +917,13 @@ chain_2_rife=no";
                                 chains[currentChainNumber].RifeModel = RifeValueToLabel(rifeModel);
                             }
 
-                            var matchCurrentModelNumber = Regex.Match(key.Name, @"_model_(\d+)_");
-
-                            if (matchCurrentModelNumber.Success)
-                            {
-                                var currentModelNumber = matchCurrentModelNumber.Groups[1].Value;
-
-                                if (!models.ContainsKey(currentChainNumber))
-                                {
-                                    models[currentChainNumber] = [];
-                                }
-
-                                if (models[currentChainNumber].ContainsKey(currentModelNumber))
-                                {
-                                    continue;
-                                }
-
-                                var modelName = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_name", "0x0");
-                                models[currentChainNumber][currentModelNumber] = new UpscaleModel(autoSave)
-                                {
-                                    Vm = this,
-                                    AllModels = GetAllModels(modelName),
-                                    ModelNumber = currentModelNumber,
-                                    Name = modelName,
-                                    ResizeFactorBeforeUpscale = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_resize_factor_before_upscale", 100.ToString()),
-                                    ResizeHeightBeforeUpscale = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_resize_height_before_upscale", 0.ToString()),
-                                    Frames = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_frames", 0.ToString()),
-                                    TemporalSceneThreshold = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_temporal_scene_threshold", UpscaleModel.DefaultTemporalSceneThreshold)
-                                };
-                            }
+                            ReadModelKey(parser, section.SectionName, key.Name, currentChainNumber, models, autoSave);
                         }
                     }
 
-                    foreach (var currentChainNumber in models.Keys)
+                    foreach (var (currentChainNumber, chain) in chains)
                     {
-                        chains[currentChainNumber].Models = new AvaloniaList<UpscaleModel>(TakeTrailingTemporalFix(chains[currentChainNumber], models[currentChainNumber].Values.ToList()));
+                        chain.Models = ReadChainFeatures(parser, section.SectionName, chain, models);
                     }
 
                     slots[currentSlotNumber] = new UpscaleSlot(autoSave)
@@ -1011,41 +1005,13 @@ chain_2_rife=no";
                             chains[currentChainNumber].RifeModel = RifeValueToLabel(rifeModel);
                         }
 
-                        var matchCurrentModelNumber = Regex.Match(key.Name, @"_model_(\d+)_");
-
-                        if (matchCurrentModelNumber.Success)
-                        {
-                            var currentModelNumber = matchCurrentModelNumber.Groups[1].Value;
-
-                            if (!models.ContainsKey(currentChainNumber))
-                            {
-                                models[currentChainNumber] = [];
-                            }
-
-                            if (models[currentChainNumber].ContainsKey(currentModelNumber))
-                            {
-                                continue;
-                            }
-
-                            var modelName = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_name", "0x0");
-                            models[currentChainNumber][currentModelNumber] = new UpscaleModel(true)
-                            {
-                                Vm = this,
-                                AllModels = GetAllModels(modelName),
-                                ModelNumber = currentModelNumber,
-                                Name = modelName,
-                                ResizeFactorBeforeUpscale = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_resize_factor_before_upscale", 100.ToString()),
-                                ResizeHeightBeforeUpscale = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_resize_height_before_upscale", 0.ToString()),
-                                Frames = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_frames", 0.ToString()),
-                                TemporalSceneThreshold = parser.GetValue(section.SectionName, $"chain_{currentChainNumber}_model_{currentModelNumber}_temporal_scene_threshold", UpscaleModel.DefaultTemporalSceneThreshold)
-                            };
-                        }
+                        ReadModelKey(parser, section.SectionName, key.Name, currentChainNumber, models, true);
                     }
                 }
 
-                foreach (var currentChainNumber in models.Keys)
+                foreach (var (currentChainNumber, chain) in chains)
                 {
-                    chains[currentChainNumber].Models = new AvaloniaList<UpscaleModel>(TakeTrailingTemporalFix(chains[currentChainNumber], models[currentChainNumber].Values.ToList()));
+                    chain.Models = ReadChainFeatures(parser, section.SectionName, chain, models);
                 }
 
                 CurrentSlot.Vm = this;
@@ -1059,25 +1025,55 @@ chain_2_rife=no";
             return value?.ToLower() == "yes";
         }
 
-        // A chain's last model, when it is a plain temporalfix model (no resize, no frame override),
-        // is the chain's temporal fix toggle: move it out of the model list onto the chain.
-        private static List<UpscaleModel> TakeTrailingTemporalFix(UpscaleChain chain, List<UpscaleModel> models)
+        // One chain_N_model_M_* key: reads that model once.
+        private void ReadModelKey(ConfigParser parser, string section, string keyName, string chainNumber,
+            Dictionary<string, Dictionary<string, UpscaleModel>> models, bool autoSave)
         {
-            var last = models.MaxBy(m => int.TryParse(m.ModelNumber, out var n) ? n : 0);
-            if (last == null)
-                return models;
-            var match = TemporalFixModelRegex.Match(last.Name ?? "");
-            if (!match.Success || !int.TryParse(match.Groups[1].Value, out var strength) ||
-                !TemporalFixStrengths.Contains(strength) ||
-                last.ResizeHeightBeforeUpscale != 0.ToString() || last.ResizeFactorBeforeUpscale != 100.ToString() ||
-                last.Frames != 0.ToString())
-                return models;
+            var match = Regex.Match(keyName, @"^chain_\d+_model_(\d+)_");
+            if (!match.Success)
+                return;
+            var modelNumber = match.Groups[1].Value;
+            if (!models.TryGetValue(chainNumber, out var chainModels))
+                models[chainNumber] = chainModels = [];
+            if (chainModels.ContainsKey(modelNumber))
+                return;
 
-            chain.TemporalFixStrength = strength;
-            if (decimal.TryParse(last.TemporalSceneThreshold, NumberStyles.Float, ENGLISH_CULTURE, out var threshold))
-                chain.TemporalFixSceneThreshold = threshold;
-            chain.EnableTemporalFix = true;
-            return [.. models.Where(m => m != last)];
+            string Key(string field) => $"chain_{chainNumber}_model_{modelNumber}_{field}";
+            var modelName = parser.GetValue(section, Key("name"), "0x0");
+            chainModels[modelNumber] = new UpscaleModel(autoSave)
+            {
+                Vm = this,
+                AllModels = GetAllModels(modelName),
+                ModelNumber = modelNumber,
+                Name = modelName,
+                ResizeFactorBeforeUpscale = parser.GetValue(section, Key("resize_factor_before_upscale"), 100.ToString()),
+                ResizeHeightBeforeUpscale = parser.GetValue(section, Key("resize_height_before_upscale"), 0.ToString()),
+                Frames = parser.GetValue(section, Key("frames"), 0.ToString()),
+                TemporalSceneThreshold = parser.GetValue(section, Key("temporal_scene_threshold"), UpscaleModel.DefaultTemporalSceneThreshold)
+            };
+        }
+
+        // The chain's models plus its feature keys: chain_N_upscale=no (the engine skips the
+        // models but they stay in the conf) and chain_N_temporal_fix_model (the engine runs it
+        // after the models, or alone). Both need aji v0.17.0+.
+        private static AvaloniaList<UpscaleModel> ReadChainFeatures(ConfigParser parser, string section, UpscaleChain chain,
+            Dictionary<string, Dictionary<string, UpscaleModel>> models)
+        {
+            string? Get(string key) => parser.GetValue(section, $"chain_{chain.ChainNumber}_{key}");
+
+            chain.EnableUpscale = Get("upscale") is not { } upscale || ParseBool(upscale);
+
+            if (Get("temporal_fix_model") is { Length: > 0 } tfix)
+            {
+                var match = TemporalFixModelRegex.Match(tfix);
+                if (match.Success && int.TryParse(match.Groups[1].Value, out var strength) && TemporalFixStrengths.Contains(strength))
+                    chain.TemporalFixStrength = strength;
+                if (decimal.TryParse(Get("temporal_fix_scene_threshold"), NumberStyles.Float, ENGLISH_CULTURE, out var threshold))
+                    chain.TemporalFixSceneThreshold = threshold;
+                chain.EnableTemporalFix = true;
+            }
+
+            return new AvaloniaList<UpscaleModel>(models.TryGetValue(chain.ChainNumber, out var m) ? m.Values : []);
         }
 
         private static void WriteChainModels(ConfigParser parser, string section, UpscaleChain chain)
@@ -1090,15 +1086,16 @@ chain_2_rife=no";
                 WriteTemporalKeys(parser, section, chain, model);
             }
 
+            // write-minimal: these keys only appear while the feature differs from the default
+            if (!chain.EnableUpscale)
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_upscale", "no");
             if (chain.EnableTemporalFix)
             {
-                var number = chain.Models.Select(m => int.TryParse(m.ModelNumber, out var n) ? n : 0).DefaultIfEmpty(0).Max() + 1;
-                parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{number}_resize_height_before_upscale", "0");
-                parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{number}_resize_factor_before_upscale", "100");
-                parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{number}_name", TemporalFixModelName(chain.TemporalFixStrength));
-                parser.SetValue(section, $"chain_{chain.ChainNumber}_model_{number}_temporal_scene_threshold", string.Create(ENGLISH_CULTURE, $"{chain.TemporalFixSceneThreshold}"));
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_temporal_fix_model", TemporalFixModelName(chain.TemporalFixStrength));
+                parser.SetValue(section, $"chain_{chain.ChainNumber}_temporal_fix_scene_threshold", string.Create(ENGLISH_CULTURE, $"{chain.TemporalFixSceneThreshold}"));
             }
         }
+
 
         public void WriteAnimeJaNaiConf()
         {
@@ -1517,8 +1514,14 @@ chain_2_rife=no";
                 this.RaisePropertyChanged(nameof(TrtDynamicOptResolution));
                 this.RaisePropertyChanged(nameof(TrtDynamicMaxResolution));
                 this.RaisePropertyChanged(nameof(TrtBuilderOptimizationLevel));
+                this.RaisePropertyChanged(nameof(TrtSummary));
             }
         }
+
+        public string TrtSummary =>
+            (TrtDynamicSelected ? $"Dynamic {TrtDynamicMinResolution} - {TrtDynamicMaxResolution}"
+             : TrtStaticSelected ? "Static" : "Static ONNX") +
+            $" · optimization level {TrtBuilderOptimizationLevel}";
 
         public bool TrtDynamicSelected => TrtEngineSettings.Contains("--minShapes=");
         public bool TrtStaticSelected => TrtEngineSettings.Contains("--optShapes=") && !TrtDynamicSelected;
@@ -1721,10 +1724,16 @@ chain_2_rife=no";
                 });
             }
 
-            this.WhenAnyValue(x => x.Vm).Subscribe(x =>
+            // ReactiveUI 26's WhenAnyValue throws on a null source, and Vm starts out null
+            this.WhenAnyValue(x => x.Vm).Subscribe(vm =>
             {
                 sub?.Dispose();
-                sub = Vm.WhenAnyValue(
+                sub2?.Dispose();
+                sub = sub2 = null;
+                if (vm is null)
+                    return;
+
+                sub = vm.WhenAnyValue(
                     x => x.SelectedSlotNumber,
                     x => x.ShowCustomProfiles,
                     x => x.ShowDefaultProfiles
@@ -1734,10 +1743,10 @@ chain_2_rife=no";
                     Vm?.RaisePropertyChanged("AllSlots");
                 });
 
-                sub2?.Dispose();
-                sub2 = Vm.WhenAnyValue(x => x.SelectedMpvProfile).Subscribe(x =>
+                sub2 = vm.WhenAnyValue(x => x.SelectedMpvProfile).Subscribe(x =>
                 {
                     this.RaisePropertyChanged(nameof(IsSelectedMpvProfile));
+                    this.RaisePropertyChanged(nameof(DefaultMark));
                 });
             });
         }
@@ -1794,6 +1803,9 @@ chain_2_rife=no";
 
         public bool IsSelectedMpvProfile => MpvProfileName == Vm?.SelectedMpvProfile;
 
+        // the sidebar marks the profile mpv starts with
+        public string DefaultMark => IsSelectedMpvProfile ? " (Default)" : "";
+
         private AvaloniaList<UpscaleChain> _chains = [];
         [DataMember]
         public AvaloniaList<UpscaleChain> Chains
@@ -1832,6 +1844,7 @@ chain_2_rife=no";
                 );
 
                 var g3 = this.WhenAnyValue(
+                    x => x.EnableUpscale,
                     x => x.EnableTemporalFix,
                     x => x.TemporalFixStrength,
                     x => x.TemporalFixSceneThreshold
@@ -1842,9 +1855,178 @@ chain_2_rife=no";
                     Vm?.WriteAnimeJaNaiConf();
                 });
             }
+
+            // the one-line summaries in the section headers follow every setting they describe
+            PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(Models))
+                    HookModels();
+                if (e.PropertyName == nameof(ChainNumber))
+                {
+                    // renumbered after a removal: the remembered states are keyed by number
+                    this.RaisePropertyChanged(nameof(ChainSectionExpanded));
+                    this.RaisePropertyChanged(nameof(ActivationSectionExpanded));
+                    this.RaisePropertyChanged(nameof(UpscaleSectionExpanded));
+                    this.RaisePropertyChanged(nameof(TemporalFixSectionExpanded));
+                    this.RaisePropertyChanged(nameof(RifeSectionExpanded));
+                }
+                if (e.PropertyName is { } name && !name.EndsWith("Summary") && !name.EndsWith("Expanded"))
+                    RaiseSummaries();
+            };
+            HookModels();
         }
 
         public bool AutoSave { get; set; }
+
+        private AvaloniaList<UpscaleModel>? _hookedModels;
+
+        private void HookModels()
+        {
+            if (_hookedModels != null)
+            {
+                _hookedModels.CollectionChanged -= ModelsCollectionChanged;
+                foreach (var model in _hookedModels)
+                    model.PropertyChanged -= ModelPropertyChanged;
+            }
+            _hookedModels = Models;
+            _hookedModels.CollectionChanged += ModelsCollectionChanged;
+            foreach (var model in _hookedModels)
+                model.PropertyChanged += ModelPropertyChanged;
+        }
+
+        private void ModelsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        {
+            foreach (UpscaleModel model in e.OldItems ?? Array.Empty<UpscaleModel>())
+                model.PropertyChanged -= ModelPropertyChanged;
+            foreach (UpscaleModel model in e.NewItems ?? Array.Empty<UpscaleModel>())
+                model.PropertyChanged += ModelPropertyChanged;
+            RaiseSummaries();
+        }
+
+        private void ModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(UpscaleModel.Name))
+                RaiseSummaries();
+        }
+
+        private void RaiseSummaries()
+        {
+            this.RaisePropertyChanged(nameof(ChainSummary));
+            this.RaisePropertyChanged(nameof(ActivationSummary));
+            this.RaisePropertyChanged(nameof(UpscaleSummary));
+            this.RaisePropertyChanged(nameof(TemporalFixSummary));
+            this.RaisePropertyChanged(nameof(RifeSummary));
+        }
+
+        // ---- collapsible sections ----------------------------------------------------------
+        // Expanded state lives in manager-ui.json, keyed by profile and chain number. A chain
+        // that isn't in a profile yet (still being read from the conf) has no key, so loading
+        // never touches it.
+
+        private string? SectionKey(string section)
+        {
+            if (Vm == null)
+                return null;
+            if (Vm.AnimeJaNaiConf?.UpscaleSlots.FirstOrDefault(s => s.Chains.Contains(this)) is { } custom)
+                return $"profile{custom.SlotNumber}:chain{ChainNumber}:{section}";
+            if (Vm.DefaultUpscaleSlots?.FirstOrDefault(s => s.Chains.Contains(this)) is { } builtin)
+                return $"default{builtin.SlotNumber}:chain{ChainNumber}:{section}";
+            return null;
+        }
+
+        private bool GetExpanded(string section, bool fallback) =>
+            SectionKey(section) is { } key ? UiState.Current.GetExpanded(key) ?? fallback : fallback;
+
+        private void SetExpanded(string section, bool value, string property)
+        {
+            if (SectionKey(section) is { } key)
+                UiState.Current.SetExpanded(key, value);
+            this.RaisePropertyChanged(property);
+        }
+
+        public bool ChainSectionExpanded
+        {
+            get => GetExpanded("chain", true);
+            set => SetExpanded("chain", value, nameof(ChainSectionExpanded));
+        }
+
+        public bool ActivationSectionExpanded
+        {
+            get => GetExpanded("activation", true);
+            set => SetExpanded("activation", value, nameof(ActivationSectionExpanded));
+        }
+
+        public bool UpscaleSectionExpanded
+        {
+            get => GetExpanded("upscale", EnableUpscale);
+            set => SetExpanded("upscale", value, nameof(UpscaleSectionExpanded));
+        }
+
+        public bool TemporalFixSectionExpanded
+        {
+            get => GetExpanded("tfix", EnableTemporalFix);
+            set => SetExpanded("tfix", value, nameof(TemporalFixSectionExpanded));
+        }
+
+        public bool RifeSectionExpanded
+        {
+            get => GetExpanded("rife", EnableRife);
+            set => SetExpanded("rife", value, nameof(RifeSectionExpanded));
+        }
+
+        // ---- header summaries ------------------------------------------------------------------
+
+        private static string RangeText(string min, string max, string any, string unit = "")
+        {
+            bool noMin = string.IsNullOrEmpty(min) || min == "0" || min == "0x0";
+            bool noMax = string.IsNullOrEmpty(max) || max == "0" || max == "0x0";
+            return (noMin, noMax) switch
+            {
+                (true, true) => any,
+                (false, true) => $"{min}+{unit}",
+                (true, false) => $"up to {max}{unit}",
+                _ => $"{min} - {max}{unit}",
+            };
+        }
+
+        // "2x_AnimeJaNai_HD_V3.1_Balanced_SPANF3_b8f64_unshuffle_fp16" -> "HD_V3.1_Balanced"
+        public static string ShortModelName(string? name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return "(no model)";
+            var shortName = Regex.Replace(name, @"^\d+x_", "");
+            shortName = Regex.Replace(shortName, @"^AnimeJaNai_", "", RegexOptions.IgnoreCase);
+            var cut = Regex.Match(shortName, @"_(SPANF\d|unshuffle|fp16|fp32|op\d+|\d+x\d+xHxW|dyn-HW)", RegexOptions.IgnoreCase);
+            return cut.Success && cut.Index > 0 ? shortName[..cut.Index] : shortName;
+        }
+
+        public string ChainSummary
+        {
+            get
+            {
+                var steps = EnableUpscale ? Models.Select(m => ShortModelName(m.Name)).ToList() : [];
+                if (EnableTemporalFix)
+                    steps.Add($"Temporal Fix {TemporalFixStrength}");
+                if (EnableRife)
+                    steps.Add($"RIFE {RifeFactorNumerator}/{RifeFactorDenominator}");
+                var fps = RangeText(MinFps, MaxFps, "any fps", " fps");
+                return $"{RangeText(MinResolution, MaxResolution, "any resolution")} · {fps} · " +
+                       (steps.Count > 0 ? string.Join(" → ", steps) : "passthrough");
+            }
+        }
+
+        public string ActivationSummary =>
+            $"{RangeText(MinResolution, MaxResolution, "any resolution")} · {RangeText(MinFps, MaxFps, "any fps", " fps")}";
+
+        public string UpscaleSummary => !EnableUpscale ? "Off"
+            : Models.Count > 0 ? string.Join(" → ", Models.Select(m => ShortModelName(m.Name)))
+            : "no models";
+
+        public string TemporalFixSummary => EnableTemporalFix ? $"Strength {TemporalFixStrength}" : "Off";
+
+        public string RifeSummary => EnableRife
+            ? $"{RifeModel} · {RifeFactorNumerator}/{RifeFactorDenominator}" + (RifeEnsemble ? " · ensemble" : "")
+            : "Off";
 
         public MainWindowViewModel? Vm { get; set; }
 
@@ -1903,8 +2085,12 @@ chain_2_rife=no";
             get => _enableRife;
             set
             {
+                bool changed = _enableRife != value;
                 this.RaiseAndSetIfChanged(ref _enableRife, value);
                 this.RaisePropertyChanged(nameof(RifeToggleEnabled));
+                // switching the feature on opens its section, off closes it
+                if (changed && SectionKey("rife") != null)
+                    RifeSectionExpanded = value;
             }
         }
 
@@ -1971,8 +2157,24 @@ chain_2_rife=no";
             set => this.RaiseAndSetIfChanged(ref _rifeBeforeUpscale, value);
         }
 
-        // Temporal fix: a vs_temporalfix model run after the chain's models, written to the conf as
-        // one more trailing model (see MainWindowViewModel.TakeTrailingTemporalFix).
+        // Upscaling off (chain_N_upscale=no) keeps the models in the conf; the engine skips them
+        // and runs only temporal fix / RIFE at the source resolution.
+        private bool _enableUpscale = true;
+        [DataMember]
+        public bool EnableUpscale
+        {
+            get => _enableUpscale;
+            set
+            {
+                bool changed = _enableUpscale != value;
+                this.RaiseAndSetIfChanged(ref _enableUpscale, value);
+                if (changed && SectionKey("upscale") != null)
+                    UpscaleSectionExpanded = value;
+            }
+        }
+
+        // Temporal fix: a vs_temporalfix model the engine runs after the chain's models
+        // (chain_N_temporal_fix_model; see MainWindowViewModel.ReadChainFeatures).
         private bool _enableTemporalFix = false;
         [DataMember]
         public bool EnableTemporalFix
@@ -1980,8 +2182,11 @@ chain_2_rife=no";
             get => _enableTemporalFix;
             set
             {
+                bool changed = _enableTemporalFix != value;
                 this.RaiseAndSetIfChanged(ref _enableTemporalFix, value);
                 this.RaisePropertyChanged(nameof(TemporalFixToggleEnabled));
+                if (changed && SectionKey("tfix") != null)
+                    TemporalFixSectionExpanded = value;
             }
         }
 

@@ -14,7 +14,9 @@ dotnet build -c Release          # Release build
 dotnet publish -c Release        # Publish self-contained win-x64 executable
 ```
 
-No test suite or linter is configured.
+No linter is configured. `dotnet run --project tests/ProfileRoundTrip` is a console regression
+test for conf/profile serialization (it compiles the production view-model files); it exits
+nonzero on failure.
 
 ## Architecture
 
@@ -30,6 +32,15 @@ No test suite or linter is configured.
 
 **Player settings:** Some `[global]` keys configure mpv rather than the inference engine — `default_slot` and `sub_render_mode` (the GPU subtitle toggle). The engine ignores them; `portable_config/scripts/animejanai_backend.lua` in the mpv-upscale-2x_animejanai package reads them at startup. The mpv options themselves live in a managed profile (`[subs-gpu]` in `mpv-animejanai.conf`), so the settings can change with the player build without a Manager release. This app never writes `mpv.conf`.
 
+**Chain feature keys (need aji v0.17.0+, which ships in the same mpv package):**
+- `chain_N_upscale=no`: the engine skips the chain's models; they stay under `chain_N_model_M_*` so turning upscaling back on restores them.
+- `chain_N_temporal_fix_model` + `chain_N_temporal_fix_scene_threshold`: the engine runs that vs_temporalfix model after the upscale models (or alone). The Manager picks the file, the newest `temporalfix_s<k>_v*` in `onnx/`, and reads the strength back from the name.
+- Both are written only while the feature differs from its default, so other confs are unchanged.
+
+**UI state:** the Manager's own layout state (sidebar width, which collapsible sections are open) lives in `manager-ui.json` next to `animejanai.conf` (`Services/UiState.cs`), never in the conf. Section keys are `profile<N>:chain<M>:<chain|activation|upscale|tfix|rife>`, `default<N>:...` and `global:trt`. The mpv package lists the file in `user_preserve`.
+
+**Layout:** profile chains (and their Activation Condition, Upscaling, Temporal Fix and RIFE blocks) and the TensorRT engine settings are `Expander.section`s with a one-line summary in the header (`ChainSummary`, `TemporalFixSummary`, `RifeSummary`, `TrtSummary`). Setting help is a `ContentControl.hint` (label + (?) icon, explanation in `ToolTip.Tip`), not visible text. The profiles sidebar is resizable (`GridSplitter`) and collapses to icons below 120 px (`compact` class).
+
 **Relative paths from executable:** The app resolves paths relative to its own location — `./animejanai.conf`, `./onnx/`, `./backups/`, and `../portable_config/mpv.conf` for mpv integration.
 
 ## Key Conventions
@@ -41,12 +52,10 @@ No test suite or linter is configured.
 
 ## Repo and directory naming
 
-The GitHub repo is **`the-database/AnimeJaNaiManager`**, but the working copy on this machine
-is the older `AnimeJaNaiConfEditor` directory, and the csproj/solution keep the old name too.
-Only `<AssemblyName>AnimeJaNaiManager</AssemblyName>` reflects the rename, so the built binary
+The GitHub repo is **`the-database/AnimeJaNaiManager`**, but the project directory and the
+csproj/solution keep the old `AnimeJaNaiConfEditor` name. Only
+`<AssemblyName>AnimeJaNaiManager</AssemblyName>` reflects the rename, so the built binary
 is `AnimeJaNaiManager.exe`. Do not rename paths to "fix" this.
-
-The active branch here is `subs/gpu-toggle`, not `main`.
 
 ## Releasing
 
