@@ -20,7 +20,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Reactive.Linq;
+using ReactiveUI.Primitives;
 using System.Threading.Tasks;
 
 namespace AnimeJaNaiConfEditor.Views
@@ -38,12 +38,37 @@ namespace AnimeJaNaiConfEditor.Views
 
         private async void MainWindow_Opened(object? sender, EventArgs e)
         {
+            if (DataContext is MainWindowViewModel vm &&
+                this.FindControl<Grid>("ProfilesGrid") is { } grid)
+            {
+                var sidebar = grid.ColumnDefinitions[0];
+                sidebar.Width = new GridLength(Math.Clamp(vm.SidebarWidth, sidebar.MinWidth, sidebar.MaxWidth));
+            }
             if (this.FindControl<AddonsView>("AddonPanel") is { } addons) await addons.ManagerOpenedAsync();
+        }
+
+        private void SidebarSplitterDragCompleted(object? sender, VectorEventArgs e)
+        {
+            if (DataContext is MainWindowViewModel vm &&
+                this.FindControl<Grid>("ProfilesGrid") is { } grid)
+            {
+                vm.SidebarWidth = grid.ColumnDefinitions[0].ActualWidth;
+            }
+        }
+
+        // Narrow enough that the names would be cut to a letter or two: show icons only.
+        private void SidebarSizeChanged(object? sender, SizeChangedEventArgs e)
+        {
+            if (sender is DockPanel sidebar)
+            {
+                sidebar.Classes.Set("compact", e.NewSize.Width < 120);
+            }
         }
 
         private async void MainWindow_Closing(object? sender, WindowClosingEventArgs e)
         {
             if (e.Cancel) return;
+            UiState.Save();
             var diagnostics = this.FindControl<DiagnosticsView>("DiagnosticsPanel");
             if (diagnostics?.IsBusy == true)
             {
@@ -407,7 +432,7 @@ namespace AnimeJaNaiConfEditor.Views
 
             var submittedBy = new TextBox
             {
-                Watermark = "Optional: a name or handle to credit you (blank = anonymous)",
+                PlaceholderText = "Optional: a name or handle to credit you (blank = anonymous)",
                 MaxLength = 60,
                 Margin = new Thickness(0, 8, 0, 0),
             };
@@ -415,7 +440,7 @@ namespace AnimeJaNaiConfEditor.Views
 
             var note = new TextBox
             {
-                Watermark = "Optional note: anything notable not already captured above (e.g. undervolt, cooling, laptop on battery)",
+                PlaceholderText = "Optional note: anything notable not already captured above (e.g. undervolt, cooling, laptop on battery)",
                 AcceptsReturn = true,
                 TextWrapping = TextWrapping.Wrap,
                 MaxLength = 280,
@@ -498,8 +523,8 @@ namespace AnimeJaNaiConfEditor.Views
                 _preview = this.WhenAnyValue(x => x.SubmittedBy, x => x.Note)
                     .Do(t =>
                     {
-                        sub.SubmittedBy = (t.Item1 ?? "").Trim();
-                        sub.Note = (t.Item2 ?? "").Trim();
+                        sub.SubmittedBy = (t.Property1 ?? "").Trim();
+                        sub.Note = (t.Property2 ?? "").Trim();
                     })
                     .Select(_ => sub.ToPreviewJson())
                     .ToProperty(this, x => x.Preview);
