@@ -2,6 +2,7 @@ using AnimeJaNaiConfEditor.Views;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -24,6 +25,9 @@ internal static class UsabilityUiChecks
             await Until(() => window.OwnedWindows.Count == 1);
             window.OwnedWindows.Single().GetVisualDescendants().OfType<Button>().Single(b => b.Content as string == choice).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Until(() => window.OwnedWindows.Count == 0 && Find<Button>("RefreshButton").IsEnabled);
+            // Avalonia 12.1 removes the dialog before its await continuations
+            // finish. Let the close handler settle before the next UI action.
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
         }
         server.ExtraAddon = new JsonObject { ["id"] = "org.example.second", ["name"] = "Second addon", ["version"] = "0.1.0", ["running"] = false, ["manual"] = true };
         Click("RefreshButton"); await Until(() => Find<Button>("RefreshButton").IsEnabled);
